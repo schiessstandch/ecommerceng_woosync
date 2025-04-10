@@ -140,7 +140,7 @@ class Oauth1
         unset($params['oauth_signature']);
 
         // Add POST fields if the request uses POST fields and no files
-        if ($request->getHeaderLine('Content-Type') === 'application/x-www-form-urlencoded' && !empty($this->config['include_post_parameters_in_signature'])) {
+        if ($request->getHeaderLine('Content-Type') === 'application/x-www-form-urlencoded' && $request->getMethod() == 'POST' && !empty($this->config['include_post_parameters_in_signature'])) {
             $body = Query::parse($request->getBody()->getContents());
             $params += $body;
         }

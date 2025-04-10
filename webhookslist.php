@@ -39,7 +39,7 @@ $confirm		= GETPOST('confirm', 'alpha');
 $toselect 		= GETPOST('toselect', 'array');
 
 // Security check
-if ($user->societe_id > 0 || !$user->rights->ecommerceng->read) {
+if ($user->socid > 0 || !$user->rights->ecommerceng->read) {
 	accessforbidden();
 }
 
@@ -232,7 +232,7 @@ $parameters=array();
 $reshook=$hookmanager->executeHooks('printFieldListWhere', $parameters);    // Note that $action and $object may have been modified by hook
 $sql.=$hookmanager->resPrint;
 
-$sql.= $db->order($sortfield, $sortorder);
+$sql.= $db->order($sortfield . ", epw.rowid", $sortorder . "," . $sortorder);
 
 // Count total nb of records
 $nbtotalofrecords = '';

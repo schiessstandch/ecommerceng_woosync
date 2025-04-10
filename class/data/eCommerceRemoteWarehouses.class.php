@@ -29,40 +29,40 @@
  */
 class eCommerceRemoteWarehouses
 {
-    /**
-     * @var DoliDB Database handler.
-     */
-    public $db;
-    /**
-     * @var string Error
-     */
-    public $error = '';
-    /**
-     * @var array Errors
-     */
-    public $errors = array();
+	/**
+	 * @var DoliDB Database handler.
+	 */
+	public $db;
+	/**
+	 * @var string Error
+	 */
+	public $error = '';
+	/**
+	 * @var array Errors
+	 */
+	public $errors = array();
 
-    public $table_element = 'ecommerceng_remote_warehouses';
+	public $table_element = 'ecommerceng_remote_warehouses';
 
-    /**
-     * Constructor
-     *
-     * @param        DoliDB $db Database handler
-     */
-    public function __construct($db)
-    {
-        $this->db = $db;
-    }
+	/**
+	 * Constructor
+	 *
+	 * @param        DoliDB $db Database handler
+	 */
+	public function __construct($db)
+	{
+		$this->db = $db;
+	}
 
-    /**
-     *  Set all remote warehouse of a site
-     *
-     * @param   int         $site_id                Site ID
-     * @param   array       $remote_warehouses      List of infos of each remote warehouse
-     * @return  int                                 >0 if OK, <0 if KO
-     * @throws  Exception
-     */
-    public function set($site_id, $remote_warehouses)
+	/**
+	 *  Set all remote warehouse of a site
+	 *
+	 * @param   int         $site_id                Site ID
+	 * @param   array       $remote_warehouses      List of infos of each remote warehouse
+	 * @return  int                                 >0 if OK, <0 if KO
+	 * @throws  Exception
+	 */
+	public function set($site_id, $remote_warehouses)
 	{
 		global $conf, $langs;
 		dol_syslog(__METHOD__ . " site_id=$site_id, remote_warehouses=" . json_encode($remote_warehouses));
@@ -109,7 +109,7 @@ class eCommerceRemoteWarehouses
 				// Update values
 				$sql = 'UPDATE ' . MAIN_DB_PREFIX . $this->table_element . ' SET';
 				$sql .= "  remote_code = '" . $this->db->escape($infos['remote_code']) . "'";
-                $sql .= ", remote_name = '" . $this->db->escape($infos['remote_name']) . "'";
+				$sql .= ", remote_name = '" . $this->db->escape($infos['remote_name']) . "'";
 				$sql .= ", warehouse_id = " . ($infos['warehouse_id'] > 0 ? $infos['warehouse_id'] : 'NULL');
 				$sql .= ', set_even_if_empty_stock = ' . (!empty($infos['set_even_if_empty_stock']) ? 1 : 'NULL');
 				$sql .= ', old_entry = ' . (!empty($infos['old_entry']) ? 1 : 'NULL');
@@ -122,7 +122,7 @@ class eCommerceRemoteWarehouses
 				$sql .= $site_id;
 				$sql .= ", '" . $this->db->escape($infos['remote_code']) . "'";
 				$sql .= ", '" . $this->db->escape($infos['remote_id']) . "'";
-                $sql .= ", '" . $this->db->escape($infos['remote_name']) . "'";
+				$sql .= ", '" . $this->db->escape($infos['remote_name']) . "'";
 				$sql .= ', ' . ($infos['warehouse_id'] > 0 ? $infos['warehouse_id'] : 'NULL');
 				$sql .= ', ' . (!empty($infos['set_even_if_empty_stock']) ? 1 : 'NULL');
 				$sql .= ', ' . (!empty($infos['old_entry']) ? 1 : 'NULL');
@@ -147,110 +147,110 @@ class eCommerceRemoteWarehouses
 		}
 	}
 
-    /**
-     *  Get a remote warehouse of a site by the remote warehouse code or warehouse id
-     *
-     * @param   int         $site_id                Site ID
+	/**
+	 *  Get a remote warehouse of a site by the remote warehouse code or warehouse id
+	 *
+	 * @param   int         $site_id                Site ID
 	 * @param   string      $remote_id  			Remote warehouse ID on site
-     * @param   int         $warehouse_id  			Warehouse ID on Dolibarr
-     * @return  array|int                           0 if not found, <0 if errors or array of infos
-     * @throws  Exception
-     */
-    public function get($site_id, $remote_id='', $warehouse_id=0)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id, remote_code=$remote_code, warehouse_id=$warehouse_id");
+	 * @param   int         $warehouse_id  			Warehouse ID on Dolibarr
+	 * @return  array|int                           0 if not found, <0 if errors or array of infos
+	 * @throws  Exception
+	 */
+	public function get($site_id, $remote_id = '', $warehouse_id = 0)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id, remote_id=$remote_id, warehouse_id=$warehouse_id");
 
-        $sql = 'SELECT remote_code, remote_id, remote_name, warehouse_id, set_even_if_empty_stock, old_entry FROM ' . MAIN_DB_PREFIX . $this->table_element;
-        $sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        if ($warehouse_id > 0) {
+		$sql = 'SELECT remote_code, remote_id, remote_name, warehouse_id, set_even_if_empty_stock, old_entry FROM ' . MAIN_DB_PREFIX . $this->table_element;
+		$sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		if ($warehouse_id > 0) {
 			$sql .= ' AND warehouse_id = ' . $warehouse_id;
 			$sql .= ' AND old_entry IS NULL';
 		} else {
-            $sql .= " AND remote_id = '" . $this->db->escape($remote_id) . "'";
-        }
-        $resql = $this->db->query($sql);
-        if ($resql) {
-            if ($this->db->num_rows($resql) == 0)
-                return 0;
+			$sql .= " AND remote_id = '" . $this->db->escape($remote_id) . "'";
+		}
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			if ($this->db->num_rows($resql) == 0)
+				return 0;
 
-            if ($obj = $this->db->fetch_object($resql)) {
-                return array(
+			if ($obj = $this->db->fetch_object($resql)) {
+				return array(
 					'remote_code' => $obj->remote_code,
-                    'remote_id' => $obj->remote_id,
+					'remote_id' => $obj->remote_id,
 					'remote_name' => $obj->remote_name,
 					'warehouse_id' => $obj->warehouse_id > 0 ? $obj->warehouse_id : 0,
 					'set_even_if_empty_stock' => !empty($obj->set_even_if_empty_stock) ? 1 : 0,
 					'old_entry' => !empty($obj->old_entry) ? 1 : 0,
-                );
-            }
-        } else {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $this->errors[] = $this->db->lasterror();
-            return -1;
-        }
-    }
+				);
+			}
+		} else {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$this->errors[] = $this->db->lasterror();
+			return -1;
+		}
+	}
 
-    /**
-     *  Get all remote warehouses of a site
-     *
-     * @param   int         $site_id    Site ID
-     * @return  array|int               List of all remote warehouses infos
-     * @throws  Exception
-     */
-    public function get_all($site_id)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id");
+	/**
+	 *  Get all remote warehouses of a site
+	 *
+	 * @param   int         $site_id    Site ID
+	 * @return  array|int               List of all remote warehouses infos
+	 * @throws  Exception
+	 */
+	public function get_all($site_id)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id");
 
-        $warehouses = array();
+		$warehouses = array();
 
-        $sql = 'SELECT remote_code, remote_id, remote_name, warehouse_id, set_even_if_empty_stock, old_entry FROM ' . MAIN_DB_PREFIX . $this->table_element;
-        $sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        $resql = $this->db->query($sql);
-        if ($resql) {
-            while ($obj = $this->db->fetch_object($resql)) {
+		$sql = 'SELECT remote_code, remote_id, remote_name, warehouse_id, set_even_if_empty_stock, old_entry FROM ' . MAIN_DB_PREFIX . $this->table_element;
+		$sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			while ($obj = $this->db->fetch_object($resql)) {
 				$warehouses[$obj->remote_id] = array(
-                    'remote_code' => $obj->remote_code,
+					'remote_code' => $obj->remote_code,
 					'remote_id' => $obj->remote_id,
-                    'remote_name' => $obj->remote_name,
-                    'warehouse_id' => $obj->warehouse_id,
-                    'set_even_if_empty_stock' => !empty($obj->set_even_if_empty_stock) ? 1 : 0,
+					'remote_name' => $obj->remote_name,
+					'warehouse_id' => $obj->warehouse_id,
+					'set_even_if_empty_stock' => !empty($obj->set_even_if_empty_stock) ? 1 : 0,
 					'old_entry' => !empty($obj->old_entry) ? 1 : 0,
-                );
-            }
-        } else {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $this->errors[] = $this->db->lasterror();
-            return -1;
-        }
+				);
+			}
+		} else {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$this->errors[] = $this->db->lasterror();
+			return -1;
+		}
 
-        return $warehouses;
-    }
+		return $warehouses;
+	}
 
-    /**
-     *  Delete all remote warehouses of a site
-     *
-     * @param   int         $site_id    Site ID
-     * @return  int                     >0 if OK, <0 if KO
-     * @throws  Exception
-     */
-    public function delete_all($site_id)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id");
+	/**
+	 *  Delete all remote warehouses of a site
+	 *
+	 * @param   int         $site_id    Site ID
+	 * @return  int                     >0 if OK, <0 if KO
+	 * @throws  Exception
+	 */
+	public function delete_all($site_id)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id");
 
-        // Delete all line for the site
-        $sql = 'DELETE FROM ' . MAIN_DB_PREFIX . $this->table_element . ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $this->errors[] = $this->db->lasterror();
-            return -1;
-        }
+		// Delete all line for the site
+		$sql = 'DELETE FROM ' . MAIN_DB_PREFIX . $this->table_element . ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$this->errors[] = $this->db->lasterror();
+			return -1;
+		}
 
-        return 1;
-    }
+		return 1;
+	}
 
 	/**
 	 * Method to output saved errors

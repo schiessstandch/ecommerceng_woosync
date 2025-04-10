@@ -35,7 +35,7 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 
-$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "woocommerce@ecommerceng"));
+$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
 if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
 
@@ -139,7 +139,7 @@ if ($action == 'set_options') {
 	$object->fk_cat_product = GETPOST('fk_cat_product', 'int');
 	$object->fk_cat_product = $object->fk_cat_product > 0 ? $object->fk_cat_product : 0;
 	$object->parameters['realtime_dtoe']['product'] = GETPOST('realtime_dtoe_product', 'int') ? 1 : 0;
-	$object->ecommerce_price_type = GETPOST('base_price_type', 'az09');
+	$object->ecommerce_price_type = GETPOST('base_price_type', 'aZ09');
 	$object->parameters['fee_service'] = GETPOST('fee_service', 'int');
 	$object->parameters['fee_service'] = $object->parameters['fee_service'] > 0 ? $object->parameters['fee_service'] : 0;
 	$object->parameters['shipping_service'] = GETPOST('shipping_service', 'int');
@@ -150,10 +150,10 @@ if ($action == 'set_options') {
 	$object->parameters['pw_gift_cards_service'] = $object->parameters['pw_gift_cards_service'] > 0 ? $object->parameters['pw_gift_cards_service'] : 0;
 	$object->parameters['acfw_store_credits_service'] = GETPOST('acfw_store_credits_service', 'int');
 	$object->parameters['acfw_store_credits_service'] = $object->parameters['acfw_store_credits_service'] > 0 ? $object->parameters['acfw_store_credits_service'] : 0;
-	$object->parameters['product_synch_price'] = GETPOST('product_synch_price', 'az09');
+	$object->parameters['product_synch_price'] = GETPOST('product_synch_price', 'aZ09');
 	$object->parameters['product_weight_units'] = empty($conf->global->PRODUCT_DISABLE_WEIGHT) ? GETPOST('product_weight_units', 'int') : 0; // 0 = Kg
 	$object->parameters['product_dimension_units'] = empty($conf->global->PRODUCT_DISABLE_SIZE) ? GETPOST('product_dimension_units', 'int') : 2; // 2 = cm
-	$object->parameters['product_variation_mode'] = GETPOST('product_variation_mode', 'az09');
+	$object->parameters['product_variation_mode'] = GETPOST('product_variation_mode', 'aZ09');
     $object->parameters['enable_product_plugin_wpml_support'] = GETPOST('enable_product_plugin_wpml_support', 'int') ? 1 : 0;
 	$object->parameters['product_status_supported'] = GETPOST('product_status_supported', 'alphanohtml');
 
@@ -185,14 +185,14 @@ if ($action == 'set_options') {
 } elseif ($action == 'set_synchronize_sens_options') {
 	$object->oldcopy = clone $object;
 
-	$object->parameters['product_synch_direction']['ref'] = GETPOST('product_synch_direction_ref', 'az09');
-	$object->parameters['product_synch_direction']['description'] = GETPOST('product_synch_direction_description', 'az09');
-	$object->parameters['product_synch_direction']['short_description'] = GETPOST('product_synch_direction_short_description', 'az09');
-	$object->parameters['product_synch_direction']['weight'] = empty($conf->global->PRODUCT_DISABLE_WEIGHT) ? GETPOST('product_synch_direction_weight', 'az09') : 'etod';
-	$object->parameters['product_synch_direction']['dimension'] = empty($conf->global->PRODUCT_DISABLE_SIZE) ? GETPOST('product_synch_direction_dimension', 'az09') : 'etod';
-	$object->parameters['product_synch_direction']['tax'] = GETPOST('product_synch_direction_tax', 'az09');
-	$object->parameters['product_synch_direction']['status'] = GETPOST('product_synch_direction_status', 'az09');
-	$object->parameters['product_synch_direction']['image'] = GETPOST('product_synch_direction_image', 'az09');
+	$object->parameters['product_synch_direction']['ref'] = GETPOST('product_synch_direction_ref', 'aZ09');
+	$object->parameters['product_synch_direction']['description'] = GETPOST('product_synch_direction_description', 'aZ09');
+	$object->parameters['product_synch_direction']['short_description'] = GETPOST('product_synch_direction_short_description', 'aZ09');
+	$object->parameters['product_synch_direction']['weight'] = empty($conf->global->PRODUCT_DISABLE_WEIGHT) ? GETPOST('product_synch_direction_weight', 'aZ09') : 'etod';
+	$object->parameters['product_synch_direction']['dimension'] = empty($conf->global->PRODUCT_DISABLE_SIZE) ? GETPOST('product_synch_direction_dimension', 'aZ09') : 'etod';
+	$object->parameters['product_synch_direction']['tax'] = GETPOST('product_synch_direction_tax', 'aZ09');
+	$object->parameters['product_synch_direction']['status'] = GETPOST('product_synch_direction_status', 'aZ09');
+	$object->parameters['product_synch_direction']['image'] = GETPOST('product_synch_direction_image', 'aZ09');
 
 	$result = $object->update($user);
 
@@ -223,7 +223,7 @@ if ($action == 'set_options') {
 		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 		exit;
 	}
-} elseif ($action == 'confirm_update_price_level' && $confirm == "yes" && !empty($conf->global->PRODUIT_MULTIPRICES) && !empty($object->parameters['realtime_dtoe']['product'])) {
+} elseif ($action == 'confirm_update_level_price' && $confirm == "yes" && !empty($conf->global->PRODUIT_MULTIPRICES) && !empty($object->parameters['realtime_dtoe']['product'])) {
 	$object->oldcopy = clone $object;
 
 	$object->price_level = GETPOST('price_level', 'int');
@@ -265,7 +265,7 @@ $formproduct = new FormProduct($db);
 $formaccounting = new FormAccounting($db);
 
 $v10p = version_compare(DOL_VERSION, "10.0.0") >= 0;
-$wikihelp='';
+$wikihelp='EN:ECommerceNg_En|FR:ECommerceNg_Fr|ES:ECommerceNg_Es';
 llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp, '', 0, 0, array(
 	'/ecommerceng/js/form.js',
 ));
@@ -299,7 +299,7 @@ include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
 
 $head=ecommercengConfigSitePrepareHead($object);
 
-dol_fiche_head($head, 'product', $langs->trans("Module107100Name"), 0, 'eCommerce@ecommerceng');
+print dol_get_fiche_head($head, 'product', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
 
 print '<div class="tabsAction tabsActionNoBottom">';
 print '<a class="butAction" href="'.$_SERVER["PHP_SELF"].'?id='.$object->id.'&amp;action=synchronize_attributes&token='.ecommercengNewToken().'">'.$langs->trans('ECommerceWoocommerceUpdateDictAttributes').'</a>';

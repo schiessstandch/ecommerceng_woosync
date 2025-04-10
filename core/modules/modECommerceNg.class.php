@@ -54,18 +54,18 @@ class modECommerceNg extends DolibarrModules
 		$this->family = 'easya';
 		$this->familyinfo = array('easya' => array('position' => '001', 'label' => $langs->trans("easyaFamily")));
 		// Module label (no space allowed), used if translation string 'ModuleXXXName' not found (where XXX is value of numeric property 'numero' of module)
-		$this->name = 'EcommerceNg';        //  Must be same than value used for if $conf->ecommerceng->enabled
+        $this->name = preg_replace('/^mod/i', '', get_class($this));        //  Must be same than value used for if $conf->ecommerceng->enabled
 		// Module description, used if translation string 'ModuleXXXDesc' not found (where XXX is value of numeric property 'numero' of module)
 		$this->description = "Module to synchronise Dolibarr with ECommerce platform (currently ecommerce supported: WooCommerce)";
 		$this->descriptionlong = "See page https://wiki.dolibarr.org/index.php/Module_Magento_EN for more information";
-		$this->editor_name      = '<b>Easya Solutions</b> (Ex Open-Dsi)';
+		$this->editor_name      = '<b>Easya Solutions</b>';
         $this->editor_web       = 'https://easya.solutions';
         $this->editor_url       = "https://easya.solutions";
         $this->editor_email     = 'support@easya.solutions';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr' or version
-		$this->version = file_get_contents(__DIR__.'/../../VERSION');
-		$this->url_last_version = 'https://git.open-dsi.fr/dolibarr-extension/'.strtolower($this->name).'/-/raw/2022.5.3/VERSION';
+		$this->version = trim(file_get_contents(__DIR__.'/../../VERSION'));
+		$this->url_last_version = 'https://git.open-dsi.fr/dolibarr-extension/'.strtolower($this->name).'/-/raw/2024/VERSION';
 		// Key used in llx_const table to save module status enabled/disabled (where MYMODULE is value of property name of module in uppercase)
 		$this->const_name = 'MAIN_MODULE_' . strtoupper($this->name);
 		// Where to store the module in setup page (0=common,1=interface,2=others,3=very specific)
@@ -97,7 +97,12 @@ class modECommerceNg extends DolibarrModules
 		//                        );
 		$this->module_parts = array(
 			'triggers' => 1,
-			'hooks' => array('expeditioncard', 'invoicecard', 'productdocuments', 'productcard', 'thirdpartycard', 'invoicelist', 'mouvementstock'),
+			'hooks' => array(
+				'expeditioncard', 'invoicecard', 'productdocuments', 'productcard', 'thirdpartycard',
+				'invoicelist', 'mouvementstock', 'categorycard', 'contactcard', 'productservicelist',
+				'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist',
+				'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist'
+			),
 		);
 
 		// Data directories to create when module is enabled.
@@ -114,9 +119,10 @@ class modECommerceNg extends DolibarrModules
 		// Dependencies
 		$this->depends = array("modSociete", "modProduct", "modCategorie", "modWebServices");        // List of modules id that must be enabled if this module is enabled
 		$this->requiredby = array();    // List of modules id to disable if this one is disabled
-		$this->phpmin = array(5, 3);                    // Minimum version of PHP required by module
-		$this->need_dolibarr_version = array(3, 9);    // Minimum version of Dolibarr required by module
-		$this->langfiles = array("ecommerce@ecommerceng", "woocommerce@ecommerceng");
+        $easya_info = json_decode(file_get_contents(__DIR__.'/../../.easya_info.json'));
+        $this->phpmin = explode('.', $easya_info->php_min_version);                    // Minimum version of PHP required by module
+        $this->need_dolibarr_version = explode('.', $easya_info->dlb_min_version);    // Minimum version of Dolibarr required by module
+		$this->langfiles = array("ecommerce@ecommerceng");
 
 		// Constants
 		// List of particular constants to add when module is enabled
@@ -153,7 +159,7 @@ class modECommerceNg extends DolibarrModules
 
 		// Dictionaries
 		$this->dictionaries = array(
-			'langs' => 'woocommerce@ecommerceng',
+			'langs' => 'ecommerce@ecommerceng',
 			'tabname' => array(
 				MAIN_DB_PREFIX . "c_ecommerceng_tax_class",
 				MAIN_DB_PREFIX . "c_ecommerceng_tax_rate",
@@ -468,6 +474,31 @@ WHERE c.rowid IS NOT NULL" ];
 		$sql[] = [ 'sql' => "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_product WHERE fk_product NOT IN (SELECT rowid FROM " . MAIN_DB_PREFIX . "product);" ];
 		$sql[] = [ 'sql' => "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_commande WHERE fk_commande NOT IN (SELECT rowid FROM " . MAIN_DB_PREFIX . "commande);" ];
 		$sql[] = [ 'sql' => "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_facture WHERE fk_facture NOT IN (SELECT rowid FROM " . MAIN_DB_PREFIX . "facture);" ];
+
+		// Used for show remote id on third party list
+		$sql[] = [ 'sql' => "CREATE OR REPLACE VIEW " . MAIN_DB_PREFIX . "view_ecommerce_thirdparty_remote_ids AS" .
+			" SELECT el.fk_societe AS fk_object" .
+			" , GROUP_CONCAT(CONCAT(es.name, ' : ', el.remote_id) ORDER BY es.name ASC, el.remote_id ASC SEPARATOR '<br>') AS remote_id" .
+			" FROM " . MAIN_DB_PREFIX . "ecommerce_societe AS el" .
+			" LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = el.fk_site" .
+			" GROUP BY el.fk_societe;"
+		];
+		// Used for show remote id on product list
+		$sql[] = [ 'sql' => "CREATE OR REPLACE VIEW " . MAIN_DB_PREFIX . "view_ecommerce_product_remote_ids AS" .
+			" SELECT el.fk_product AS fk_object" .
+			" , GROUP_CONCAT(CONCAT(es.name, ' : ', el.remote_id) ORDER BY es.name ASC, el.remote_id ASC SEPARATOR '<br>') AS remote_id" .
+			" FROM " . MAIN_DB_PREFIX . "ecommerce_product AS el" .
+			" LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = el.fk_site" .
+			" GROUP BY el.fk_product;"
+		];
+		// Used for show remote id on contact list
+		$sql[] = [ 'sql' => "CREATE OR REPLACE VIEW " . MAIN_DB_PREFIX . "view_ecommerce_contact_remote_ids AS" .
+			" SELECT el.fk_socpeople AS fk_object" .
+			" , GROUP_CONCAT(CONCAT(es.name, ' : ', el.remote_id) ORDER BY es.name ASC, el.remote_id ASC SEPARATOR '<br>') AS remote_id" .
+			" FROM " . MAIN_DB_PREFIX . "ecommerce_socpeople AS el" .
+			" LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = el.fk_site" .
+			" GROUP BY el.fk_socpeople;"
+		];
 
 		// Delete semaphore token for cron jobs
 		require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';

@@ -31,51 +31,51 @@ dol_include_once('/ecommerceng/class/data/eCommerceProduct.class.php');
  */
 class eCommerceUtils
 {
-    public $error;
-    public $errors=array();
-    public $success;
-    public $langs;
-    public $user;
+	public $error;
+	public $errors=array();
+	public $success;
+	public $langs;
+	public $user;
 
-    /**
-     * @var DoliDB    Database handler
-     */
+	/**
+	 * @var DoliDB    Database handler
+	 */
 	public $db;
 
 	/**
 	 * @var array 	List of chronometer data
 	 */
-    protected static $chronometer = array();
+	protected static $chronometer = array();
 
 
-    /**
-     * Constructor
-     *
-     * @param DoliDB            $db           Database handler
-     */
-    function __construct($db)
-    {
-        global $langs, $user;
+	/**
+	 * Constructor
+	 *
+	 * @param DoliDB            $db           Database handler
+	 */
+	public function __construct($db)
+	{
+		global $langs, $user;
 
-        $this->langs = $langs;
-        $this->user = $user;
-        $this->db = $db;
-    }
+		$this->langs = $langs;
+		$this->user = $user;
+		$this->db = $db;
+	}
 
-    /**
-     *  Synchronize all new movement stocks from dolibarr to site (cron)
-     *
-     *  @return	int				0 if OK, < 0 if KO (this function is used also by cron so only 0 is OK)
-     */
-    public function cronSynchronizeStocksToSite()
-    {
-        global $conf, $user, $langs;
+	/**
+	 *  Synchronize all new movement stocks from dolibarr to site (cron)
+	 *
+	 *  @return	int				0 if OK, < 0 if KO (this function is used also by cron so only 0 is OK)
+	 */
+	public function cronSynchronizeStocksToSite()
+	{
+		global $conf, $user, $langs;
 
-        $langs->load('ecommerceng@ecommerceng');
-        $error = 0;
-        $output = '';
+		$langs->load('ecommerceng@ecommerceng');
+		$error = 0;
+		$output = '';
 
-        $stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__);
+		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__);
 
 		$eCommerceSite = new eCommerceSite($this->db);
 		$sites = $eCommerceSite->listSites('object');
@@ -266,89 +266,83 @@ class eCommerceUtils
 			$this->db->free($resql);
 		}
 
-        eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
+		eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
 
-        if (!$error) {
-            $output .= $langs->trans('ECommerceSynchronizeStocksToSiteSuccess');
-            $this->error = "";
-            $this->errors = array();
-            $this->output = $output;
-            $this->result = array("commandbackuplastdone" => "", "commandbackuptorun" => "");
+		if (!$error) {
+			$output .= $langs->trans('ECommerceSynchronizeStocksToSiteSuccess');
+			$this->error = "";
+			$this->errors = array();
+			$this->output = $output;
+			$this->result = array("commandbackuplastdone" => "", "commandbackuptorun" => "");
 
-            return 0;
-        } else {
-            $output = $langs->trans('ECommerceErrorWhenSynchronizeStocksToSite') . ":<br>" . $output;
-            dol_syslog(__METHOD__ . " Error: " . $output, LOG_ERR);
+			return 0;
+		} else {
+			$output = $langs->trans('ECommerceErrorWhenSynchronizeStocksToSite') . ":<br>" . $output;
+			dol_syslog(__METHOD__ . " Error: " . $output, LOG_ERR);
 
-            $this->error = $output;
-            $this->errors = array();
-            return -1;
-        }
-    }
+			$this->error = $output;
+			$this->errors = array();
+			return -1;
+		}
+	}
 
-    /**
-     * 	Sync all
+	/**
+	 * 	Sync all
 	 *  CAN BE A CRON TASK
-     *
-     *  @param  int     $toNb       Max nb to synch
+	 *
+	 *  @param  int     $toNb       Max nb to synch
 	 *  @return	int					0 if OK, < 0 if KO (this function is used also by cron so only 0 is OK)
-     */
-    public function synchAll($toNb=0)
-    {
-    	global $db;
+	 */
+	public function synchAll($toNb=0)
+	{
+		global $db;
 
-    	$toDate = 0;
+		$toDate = 0;
 
-    	$this->output = '';
-    	$this->error='';
+		$this->output = '';
+		$this->error = '';
 
-    	$error=0;
+		$error = 0;
 
-    	$eCommerceSite = new eCommerceSite($db);
-    	$sites = $eCommerceSite->listSites('object');
+		$eCommerceSite = new eCommerceSite($db);
+		$sites = $eCommerceSite->listSites('object');
 
-    	// Loop on each site
-		foreach($sites as $site)
-		{
-	    	$site->cleanOrphelins();
+		// Loop on each site
+		foreach ($sites as $site) {
+			$site->cleanOrphelins();
 
-	    	$synchro = new eCommerceSynchro($db, $site, $toDate, $toNb);          // $synchro->toDate will be set to dol_now if toDate no defined.
+			$synchro = new eCommerceSynchro($db, $site, $toDate, $toNb);          // $synchro->toDate will be set to dol_now if toDate no defined.
 
-	    	dol_syslog("site.php Try to connect to eCommerce site ".$site->name);
-	    	$synchro->connect();
-	    	if (count($synchro->errors))
-	    	{
-	    		$error++;
-	    		setEventMessages($synchro->error, $synchro->errors, 'errors');
-	    	}
-
-			if (! $error)
-			{
-		    	$result=0;
-				if ($result >= 0) $result=$synchro->synchCategory($toNb);
-				if ($result >= 0) $result=$synchro->synchProduct(array(), $toNb);
-				if ($result >= 0) $result=$synchro->synchSociete(array(), $toNb);
-				if ($result >= 0) $result=$synchro->synchCommande(array(), $toNb);
-				if ($result >= 0) $result=$synchro->synchFacture($toNb);
-
-				if ($result >= 0) $result=$synchro->synchDtoECategory($toNb);
-				if ($result >= 0) $result=$synchro->synchDtoEProduct($toNb);
+			dol_syslog("site.php Try to connect to eCommerce site " . $site->name);
+			$synchro->connect();
+			if (count($synchro->errors)) {
+				$error++;
+				setEventMessages($synchro->error, $synchro->errors, 'errors');
 			}
 
-			if ($error || $result < 0)
-			{
-				$this->output .= 'Error during automatic synchronization of site '.$site->name."\n";
-				$this->error .= 'Error during automatic synchronization of site '.$site->name.": ".$synchro->error;
+			if (!$error) {
+				$result = 0;
+				if ($result >= 0) $result = $synchro->synchCategory($toNb);
+				if ($result >= 0) $result = $synchro->synchProduct(array(), $toNb);
+				if ($result >= 0) $result = $synchro->synchSociete(array(), $toNb);
+				if ($result >= 0) $result = $synchro->synchCommande(array(), $toNb);
+				if ($result >= 0) $result = $synchro->synchFacture($toNb);
+
+				if ($result >= 0) $result = $synchro->synchDtoECategory($toNb);
+				if ($result >= 0) $result = $synchro->synchDtoEProduct($toNb);
 			}
-			else
-			{
-				$this->output .= 'Automatic synchronization of site '.$site->name.' done'."\n";
+
+			if ($error || $result < 0) {
+				$this->output .= 'Error during automatic synchronization of site ' . $site->name . "\n";
+				$this->error .= 'Error during automatic synchronization of site ' . $site->name . ": " . $synchro->error;
+			} else {
+				$this->output .= 'Automatic synchronization of site ' . $site->name . ' done' . "\n";
 			}
 		}
 
-		if (! $error) return 0;
+		if (!$error) return 0;
 		else return 1;
-    }
+	}
 
 	/**
 	 * Start stopwatch
@@ -451,8 +445,8 @@ class eCommerceUtils
 	 */
 	public static function microTimeToTime($micro_time)
 	{
-		$hours = (int)($micro_time / 60 / 60);
-		$minutes = (int)(($micro_time / 60) - $hours * 60);
+		$hours = (int) ($micro_time / 60 / 60);
+		$minutes = (int) (($micro_time / 60) - $hours * 60);
 		$seconds = $micro_time - $hours * 60 * 60 - $minutes * 60;
 		return sprintf("%02d:%02d:%09.6f", $hours, $minutes, $seconds);
 	}

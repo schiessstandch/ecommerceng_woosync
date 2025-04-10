@@ -34,7 +34,7 @@ dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 dol_include_once('/ecommerceng/class/data/eCommercePaymentGateways.class.php');
 
-$langs->loadLangs(array("admin", "orders", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "woocommerce@ecommerceng"));
+$langs->loadLangs(array("admin", "orders", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
 if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
 
@@ -171,7 +171,7 @@ if ($action == 'set_options') {
 	$object->parameters['realtime_dtoe']['order'] = GETPOST('realtime_dtoe_order', 'int') ? 1 : 0;
 	$object->parameters['order_actions']['create_invoice'] = GETPOST('create_invoice', 'int') ? 1 : 0;
 	$object->parameters['order_actions']['create_invoice_type'] = GETPOST('create_invoice_type', 'int');
-	$object->parameters['order_actions']['create_invoice_deposit_type'] = GETPOST('create_invoice_deposit_type', 'az09');
+	$object->parameters['order_actions']['create_invoice_deposit_type'] = GETPOST('create_invoice_deposit_type', 'aZ09');
 	$object->parameters['order_actions']['create_invoice_deposit_value'] = GETPOST('create_invoice_deposit_value', 'int');
 	$object->parameters['order_actions']['create_invoice_if_amount_0'] = GETPOST('create_invoice_if_amount_0', 'int') ? 1 : 0;
 	$object->parameters['order_actions']['send_invoice_by_mail'] = GETPOST('send_invoice_by_mail', 'int') ? 1 : 0;
@@ -179,8 +179,10 @@ if ($action == 'set_options') {
 	$object->parameters['default_sales_representative_follow'] = GETPOST('default_sales_representative_follow', 'int');
 	$object->parameters['order_first_date_etod'] = GETPOST('order_first_date_etod', 'alphanohtml') ? dol_mktime(0, 0, 0, GETPOST('order_first_date_etodmonth', 'int'), GETPOST('order_first_date_etodday', 'int'), GETPOST('order_first_date_etodyear', 'int')) : null;
 	$object->parameters['order_actions']['fee_line_as_item_line'] = GETPOST('fee_line_as_item_line', 'int') ? 1 : 0;
+	$object->parameters['order_actions']['dont_add_product_description_into_line'] = !empty($object->parameters['enable_product_plugin_wpml_support']) && GETPOST('order_dont_add_product_description_into_line', 'int') ? 1 : 0;
+	$object->parameters['order_actions']['order_default_language_if_not_provided'] = !empty($object->parameters['enable_product_plugin_wpml_support']) ? GETPOST('order_default_language_if_not_provided', 'alphanohtml') : '';
 	$object->parameters['order_metadata_product_lines_to_description_etod'] = GETPOST('order_metadata_product_lines_to_description_etod', 'int') ? 1 : 0;
-	$object->parameters['order_filter_mode_metadata_product_lines_to_description_etod'] = GETPOST('order_filter_mode_metadata_product_lines_to_description_etod', 'az09');
+	$object->parameters['order_filter_mode_metadata_product_lines_to_description_etod'] = GETPOST('order_filter_mode_metadata_product_lines_to_description_etod', 'aZ09');
 	$object->parameters['order_filter_keys_metadata_product_lines_to_description_etod'] = GETPOST('order_filter_keys_metadata_product_lines_to_description_etod', 'alphanohtml');
 	$object->parameters['order_actions']['order_note_into_public_note'] = GETPOST('order_note_into_public_note', 'int') ? 1 : 0;
 
@@ -267,7 +269,7 @@ if ($action == 'set_options') {
 $form = new Form($db);
 $formmail = new FormMail($db);
 
-$wikihelp='';
+$wikihelp='EN:ECommerceNg_En|FR:ECommerceNg_Fr|ES:ECommerceNg_Es';
 llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp, '', 0, 0, array(
 	'/ecommerceng/js/form.js',
 ));
@@ -297,7 +299,7 @@ include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
 
 $head=ecommercengConfigSitePrepareHead($object);
 
-dol_fiche_head($head, 'order_invoice', $langs->trans("Module107100Name"), 0, 'eCommerce@ecommerceng');
+print dol_get_fiche_head($head, 'order_invoice', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
 
 print '<div class="tabsAction tabsActionNoBottom">';
 print '<a class="butAction" href="'.$_SERVER["PHP_SELF"].'?id='.$object->id.'&amp;action=synchronize_payment_gateways&token='.ecommercengNewToken().'">'.$langs->trans('ECommerceUpdatePaymentGateways').'</a>';
@@ -450,6 +452,23 @@ if (!empty($object->parameters['order_actions']['create_order']) ||
 	print '<input type="checkbox" name="fee_line_as_item_line" value="1"' . (!empty($object->parameters['order_actions']['fee_line_as_item_line']) ? ' checked' : '') . ' />' . "\n";
 	print '</td></tr>' . "\n";
 
+	// Don't add product description into the order line (in translate language)
+	if (!empty($object->parameters['enable_product_plugin_wpml_support'])) {
+		print '<tr class="oddeven">' . "\n";
+		print '<td>' . $langs->trans("ECommerceWoocommerceOrderDontAddProductDescriptionIntoLine") . '</td>' . "\n";
+		print '<td>' . $langs->trans("ECommerceWoocommerceOrderDontAddProductDescriptionIntoLineDescription") . '</td>' . "\n";
+		print '<td class="right">' . "\n";
+		print '<input type="checkbox" name="order_dont_add_product_description_into_line" value="1"' . (!empty($object->parameters['order_actions']['dont_add_product_description_into_line']) ? ' checked' : '') . ' />' . "\n";
+		print '</td></tr>' . "\n";
+		print '<tr class="oddeven">' . "\n";
+		print '<td>' . $langs->trans("ECommerceWoocommerceOrderDefaultLanguageIfNotProvided") . '</td>' . "\n";
+		print '<td>' . $langs->trans("ECommerceWoocommerceOrderDefaultLanguageIfNotProvidedDescription") . '</td>' . "\n";
+		print '<td class="right">' . "\n";
+		$language_list = $object->getLanguages();
+		print $form->selectarray('order_default_language_if_not_provided', $language_list, $object->parameters['order_actions']['order_default_language_if_not_provided'], 1, 0, 0, '', 0, 0, 0, '', 'minwidth300');
+		print '</td></tr>' . "\n";
+	}
+
 	// Add meta data in product line description
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommerceWoocommerceOrderMetaDataInProductLineToDescriptionForECommerceToDolibarr") . '</td>' . "\n";
@@ -518,7 +537,7 @@ if (!empty($object->parameters['order_actions']['create_order'])) {
 		print '</td></tr>' . "\n";
 
 		foreach ($order_dtoe_status as $d_status => $d_label) {
-			$selected = isset($object->parameters['order_status_dtoe'][$d_status]) ? $object->parameters['order_status_dtoe'][$d_status] : '';
+			$selected = isset($object->parameters['order_status_dtoe'][$d_status]['selected']) ? $object->parameters['order_status_dtoe'][$d_status]['selected'] : (isset($object->parameters['order_status_dtoe'][$d_status]) ? $object->parameters['order_status_dtoe'][$d_status] : '');
 
 			print '<tr class="oddeven">' . "\n";
 			print '<td>' . $d_label . '</td>' . "\n";
@@ -644,7 +663,7 @@ if (!empty($object->parameters['order_actions']['create_order']) ||
                     print '<tr><td>' . "\n";
                     if ($lang != 'ec_none') print $lang . " : ";
                     // Zone to select email template
-                    if (count($email_templates[$lang == 'ec_none' ? '' : $lang]) > 0) {
+                    if (isset($email_templates[$lang == 'ec_none' ? '' : $lang]) && count($email_templates[$lang == 'ec_none' ? '' : $lang]) > 0) {
                         print $form->selectarray('mail_model_for_send_invoice_' . $lang . '_' . $key, $email_templates[$lang == 'ec_none' ? '' : $lang], $infos['mail_model_for_send_invoice'][$lang], 1, 0, 0, '', 0, 0, 0, '', ' minwidth200');
                     } else {
                         print '<select name="mail_model_for_send_invoice_' . $lang . '_' . $key . '" disabled="disabled"><option value="none">' . $langs->trans("NoTemplateDefined") . '</option></select>';    // Do not put 'disabled' on 'option' tag, it is already on 'select' and it makes chrome crazy.

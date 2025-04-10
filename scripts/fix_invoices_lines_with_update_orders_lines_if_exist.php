@@ -101,7 +101,7 @@ $max_sites = count($sites);
 $num_sites = 0;
 
 if ($max_sites > 0) {
-	$langs->loadLangs(array('ecommerce@ecommerceng', 'woocommerce@ecommerceng'));
+	$langs->loadLangs(array('ecommerce@ecommerceng'));
 	$startTime = microtime(true);
 
 	foreach ($sites as $site) {
@@ -165,10 +165,10 @@ if ($max_sites > 0) {
 			$num_jobs++;
 			printStatus($num_sites, $max_sites, $num_jobs, $max_jobs);
 
-			if (preg_match('/^' . preg_quote('eCommerce-' . $site->id . '-') . '(\d+)' . preg_quote('-refund-') . '(\d+)/', $obj->ref_ext, $matches)) {
+			if (preg_match('/^' . preg_quote('eCommerce-' . $site->id . '-', '/') . '(\d+)' . preg_quote('-refund-', '/') . '(\d+)/', $obj->ref_ext, $matches)) {
 				$remote_id = $matches[1];
 				$refund_remote_id = $matches[2];
-			} elseif (preg_match('/^' . preg_quote('eCommerce-' . $site->id . '-') . '(\d+)/', $obj->ref_ext, $matches)) {
+			} elseif (preg_match('/^' . preg_quote('eCommerce-' . $site->id . '-', '/') . '(\d+)/', $obj->ref_ext, $matches)) {
 				$remote_id = $matches[1];
 				$refund_remote_id = 0;
 			} else {

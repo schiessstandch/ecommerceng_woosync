@@ -29,60 +29,60 @@
  */
 class eCommercePaymentGateways
 {
-    /**
-     * @var DoliDB Database handler.
-     */
-    public $db;
-    /**
-     * @var string Error
-     */
-    public $error = '';
-    /**
-     * @var array Errors
-     */
-    public $errors = array();
+	/**
+	 * @var DoliDB Database handler.
+	 */
+	public $db;
+	/**
+	 * @var string Error
+	 */
+	public $error = '';
+	/**
+	 * @var array Errors
+	 */
+	public $errors = array();
 
-    public $table_element = 'ecommerceng_payment_gateways';
+	public $table_element = 'ecommerceng_payment_gateways';
 
-    /**
-     * Constructor
-     *
-     * @param        DoliDB $db Database handler
-     */
-    public function __construct($db)
-    {
-        $this->db = $db;
-    }
+	/**
+	 * Constructor
+	 *
+	 * @param        DoliDB $db Database handler
+	 */
+	public function __construct($db)
+	{
+		$this->db = $db;
+	}
 
-    /**
-     *  Set all payment gateways of a site
-     *
-     * @param   int         $site_id                Site ID
-     * @param   array       $payment_gateways       List of infos of each payment gateway
-     * @return  int                                 >0 if OK, <0 if KO
-     * @throws  Exception
-     */
-    public function set($site_id, $payment_gateways)
-    {
-        global $conf, $langs;
-        dol_syslog(__METHOD__ . " site_id=$site_id, payment_gateways=".json_encode($payment_gateways));
+	/**
+	 *  Set all payment gateways of a site
+	 *
+	 * @param   int         $site_id                Site ID
+	 * @param   array       $payment_gateways       List of infos of each payment gateway
+	 * @return  int                                 >0 if OK, <0 if KO
+	 * @throws  Exception
+	 */
+	public function set($site_id, $payment_gateways)
+	{
+		global $conf, $langs;
+		dol_syslog(__METHOD__ . " site_id=$site_id, payment_gateways=" . json_encode($payment_gateways));
 
-        $errors = 0;
-        $this->errors = array();
+		$errors = 0;
+		$this->errors = array();
 
-        // Clean values
-        $site_id = $site_id > 0 ? $site_id : 0;
-        $payment_gateways = is_array($payment_gateways) ? $payment_gateways : array();
+		// Clean values
+		$site_id = $site_id > 0 ? $site_id : 0;
+		$payment_gateways = is_array($payment_gateways) ? $payment_gateways : array();
 
-        // Check values
-        if ($site_id == 0) {
-            $this->errors[] = $langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("ECommerceSite"));
-            return -1;
-        }
+		// Check values
+		if ($site_id == 0) {
+			$this->errors[] = $langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("ECommerceSite"));
+			return -1;
+		}
 
-        $this->db->begin();
+		$this->db->begin();
 
-        if (!$errors) {
+		if (!$errors) {
 			// Insert values
 			foreach ($payment_gateways as $payment_gateway_id => $infos) {
 				$sql = 'INSERT INTO ' . MAIN_DB_PREFIX . $this->table_element . '(site_id, payment_gateway_id, payment_gateway_label, payment_mode_id, bank_account_id, create_invoice_payment, mail_model_for_send_invoice, supplier_id, product_id_for_fee, create_supplier_invoice_payment, entity) VALUES (';
@@ -130,129 +130,129 @@ class eCommercePaymentGateways
 			}
 		}
 
-        if ($errors) {
-            $this->db->rollback();
-            return -1;
-        } else {
-            $this->db->commit();
-            return 1;
-        }
-    }
+		if ($errors) {
+			$this->db->rollback();
+			return -1;
+		} else {
+			$this->db->commit();
+			return 1;
+		}
+	}
 
-    /**
-     *  Get a payment gateway of a site by the payment gateway ID or payment mode ID
-     *
-     * @param   int         $site_id                Site ID
-     * @param   string      $payment_gateway_id     Payment gateway ID on WooCommerce
-     * @param   int         $payment_mode_id        Payment mode ID on Dolibarr
-     * @return  array|int                           0 if not found, <0 if errors or array of infos
-     * @throws  Exception
-     */
-    public function get($site_id, $payment_gateway_id='', $payment_mode_id=0)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id, payment_gateway_id=$payment_gateway_id, payment_mode_id=$payment_mode_id");
+	/**
+	 *  Get a payment gateway of a site by the payment gateway ID or payment mode ID
+	 *
+	 * @param   int         $site_id                Site ID
+	 * @param   string      $payment_gateway_id     Payment gateway ID on WooCommerce
+	 * @param   int         $payment_mode_id        Payment mode ID on Dolibarr
+	 * @return  array|int                           0 if not found, <0 if errors or array of infos
+	 * @throws  Exception
+	 */
+	public function get($site_id, $payment_gateway_id = '', $payment_mode_id = 0)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id, payment_gateway_id=$payment_gateway_id, payment_mode_id=$payment_mode_id");
 
-        $sql = 'SELECT payment_gateway_id, payment_gateway_label, payment_mode_id, bank_account_id, create_invoice_payment, mail_model_for_send_invoice, supplier_id, product_id_for_fee, create_supplier_invoice_payment FROM ' . MAIN_DB_PREFIX . $this->table_element;
-        $sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        if ($payment_mode_id > 0) {
-            $sql .= ' AND payment_mode_id = ' . $payment_mode_id;
-        } else {
-            $sql .= " AND payment_gateway_id = '" . $this->db->escape($payment_gateway_id) . "'";
-        }
-        $resql = $this->db->query($sql);
-        if ($resql) {
-            if ($this->db->num_rows($resql) == 0)
-                return 0;
+		$sql = 'SELECT payment_gateway_id, payment_gateway_label, payment_mode_id, bank_account_id, create_invoice_payment, mail_model_for_send_invoice, supplier_id, product_id_for_fee, create_supplier_invoice_payment FROM ' . MAIN_DB_PREFIX . $this->table_element;
+		$sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		if ($payment_mode_id > 0) {
+			$sql .= ' AND payment_mode_id = ' . $payment_mode_id;
+		} else {
+			$sql .= " AND payment_gateway_id = '" . $this->db->escape($payment_gateway_id) . "'";
+		}
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			if ($this->db->num_rows($resql) == 0)
+				return 0;
 
-            if ($obj = $this->db->fetch_object($resql)) {
-                $mail_model_for_send_invoice = json_decode($obj->mail_model_for_send_invoice, true);
-                if (!isset($mail_model_for_send_invoice)) $mail_model_for_send_invoice = array('ec_none' => $obj->mail_model_for_send_invoice);
+			if ($obj = $this->db->fetch_object($resql)) {
+				$mail_model_for_send_invoice = json_decode($obj->mail_model_for_send_invoice, true);
+				if (!isset($mail_model_for_send_invoice)) $mail_model_for_send_invoice = array('ec_none' => $obj->mail_model_for_send_invoice);
 
-                return array(
-                    'payment_gateway_id' => $obj->payment_gateway_id,
-                    'payment_gateway_label' => $obj->payment_gateway_label,
-                    'payment_mode_id' => $obj->payment_mode_id,
-                    'bank_account_id' => $obj->bank_account_id,
-                    'create_invoice_payment' => !empty($obj->create_invoice_payment) ? 1 : 0,
-                    'mail_model_for_send_invoice' => $mail_model_for_send_invoice,
-                    'supplier_id' => $obj->supplier_id,
-                    'product_id_for_fee' => $obj->product_id_for_fee,
-                    'create_supplier_invoice_payment' => !empty($obj->create_supplier_invoice_payment) ? 1 : 0,
-                );
-            }
-        } else {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $errors[] = $this->db->lasterror();
-            return -1;
-        }
-    }
+				return array(
+					'payment_gateway_id' => $obj->payment_gateway_id,
+					'payment_gateway_label' => $obj->payment_gateway_label,
+					'payment_mode_id' => $obj->payment_mode_id,
+					'bank_account_id' => $obj->bank_account_id,
+					'create_invoice_payment' => !empty($obj->create_invoice_payment) ? 1 : 0,
+					'mail_model_for_send_invoice' => $mail_model_for_send_invoice,
+					'supplier_id' => $obj->supplier_id,
+					'product_id_for_fee' => $obj->product_id_for_fee,
+					'create_supplier_invoice_payment' => !empty($obj->create_supplier_invoice_payment) ? 1 : 0,
+				);
+			}
+		} else {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$errors[] = $this->db->lasterror();
+			return -1;
+		}
+	}
 
-    /**
-     *  Get all payment gateway of a site
-     *
-     * @param   int         $site_id    Site ID
-     * @return  array|int               List of all payment gateway infos
-     * @throws  Exception
-     */
-    public function get_all($site_id)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id");
+	/**
+	 *  Get all payment gateway of a site
+	 *
+	 * @param   int         $site_id    Site ID
+	 * @return  array|int               List of all payment gateway infos
+	 * @throws  Exception
+	 */
+	public function get_all($site_id)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id");
 
-        $payment_gateways = array();
+		$payment_gateways = array();
 
-        $sql = 'SELECT payment_gateway_id, payment_gateway_label, payment_mode_id, bank_account_id, create_invoice_payment, mail_model_for_send_invoice, supplier_id, product_id_for_fee, create_supplier_invoice_payment FROM ' . MAIN_DB_PREFIX . $this->table_element;
-        $sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        $resql = $this->db->query($sql);
-        if ($resql) {
-            while ($obj = $this->db->fetch_object($resql)) {
-                $mail_model_for_send_invoice = json_decode($obj->mail_model_for_send_invoice, true);
-                if (!isset($mail_model_for_send_invoice)) $mail_model_for_send_invoice = array('ec_none' => $obj->mail_model_for_send_invoice);
+		$sql = 'SELECT payment_gateway_id, payment_gateway_label, payment_mode_id, bank_account_id, create_invoice_payment, mail_model_for_send_invoice, supplier_id, product_id_for_fee, create_supplier_invoice_payment FROM ' . MAIN_DB_PREFIX . $this->table_element;
+		$sql .= ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			while ($obj = $this->db->fetch_object($resql)) {
+				$mail_model_for_send_invoice = json_decode($obj->mail_model_for_send_invoice, true);
+				if (!isset($mail_model_for_send_invoice)) $mail_model_for_send_invoice = array('ec_none' => $obj->mail_model_for_send_invoice);
 
-                $payment_gateways[$obj->payment_gateway_id] = array(
-                    'payment_gateway_label' => $obj->payment_gateway_label,
-                    'payment_mode_id' => $obj->payment_mode_id,
-                    'bank_account_id' => $obj->bank_account_id,
-                    'create_invoice_payment' => !empty($obj->create_invoice_payment) ? 1 : 0,
-                    'mail_model_for_send_invoice' => $mail_model_for_send_invoice,
-                    'supplier_id' => $obj->supplier_id,
-                    'product_id_for_fee' => $obj->product_id_for_fee,
-                    'create_supplier_invoice_payment' => !empty($obj->create_supplier_invoice_payment) ? 1 : 0,
-                );
-            }
-        } else {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $errors[] = $this->db->lasterror();
-            return -1;
-        }
+				$payment_gateways[$obj->payment_gateway_id] = array(
+					'payment_gateway_label' => $obj->payment_gateway_label,
+					'payment_mode_id' => $obj->payment_mode_id,
+					'bank_account_id' => $obj->bank_account_id,
+					'create_invoice_payment' => !empty($obj->create_invoice_payment) ? 1 : 0,
+					'mail_model_for_send_invoice' => $mail_model_for_send_invoice,
+					'supplier_id' => $obj->supplier_id,
+					'product_id_for_fee' => $obj->product_id_for_fee,
+					'create_supplier_invoice_payment' => !empty($obj->create_supplier_invoice_payment) ? 1 : 0,
+				);
+			}
+		} else {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$errors[] = $this->db->lasterror();
+			return -1;
+		}
 
-        return $payment_gateways;
-    }
+		return $payment_gateways;
+	}
 
-    /**
-     *  Delete all payment gateway of a site
-     *
-     * @param   int         $site_id    Site ID
-     * @return  int                     >0 if OK, <0 if KO
-     * @throws  Exception
-     */
-    public function delete_all($site_id)
-    {
-        global $conf;
-        dol_syslog(__METHOD__ . " site_id=$site_id");
+	/**
+	 *  Delete all payment gateway of a site
+	 *
+	 * @param   int         $site_id    Site ID
+	 * @return  int                     >0 if OK, <0 if KO
+	 * @throws  Exception
+	 */
+	public function delete_all($site_id)
+	{
+		global $conf;
+		dol_syslog(__METHOD__ . " site_id=$site_id");
 
-        // Delete all line for the site
-        $sql = 'DELETE FROM ' . MAIN_DB_PREFIX . $this->table_element . ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
-        $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
-            $this->errors[] = $this->db->lasterror();
-            return -1;
-        }
+		// Delete all line for the site
+		$sql = 'DELETE FROM ' . MAIN_DB_PREFIX . $this->table_element . ' WHERE site_id = ' . $site_id . ' AND entity = ' . $conf->entity;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' SQL: ' . $sql . '; Errors: ' . $this->db->lasterror(), LOG_ERR);
+			$this->errors[] = $this->db->lasterror();
+			return -1;
+		}
 
-        return 1;
-    }
+		return 1;
+	}
 
 	/**
 	 * Method to output saved errors

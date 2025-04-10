@@ -22,7 +22,10 @@
  */
 
 dol_include_once('/ecommerceng/class/client/eCommerceClientApi.class.php');
-
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Exception\RequestException;
 /**
  * 	Class to manage Client Wordpress API
  */
@@ -64,15 +67,54 @@ class eCommerceClientWordpressApi extends eCommerceClientApi
 		$timeout = $site->wordpress_timeout > 0 ? $site->wordpress_timeout : 30;
 
 		try {
+			$stack = HandlerStack::create();
+
+			// Define the retry middleware
+			$retryMiddleware = Middleware::retry(
+				function ($retries, $request, $response, $exception) {
+					// Limit the number of retries to 5
+					if ($retries >= 5) {
+						return false;
+					}
+
+					// Retry on server errors (5xx HTTP status codes)
+					if ($response && $response->getStatusCode() >= 500) {
+						dol_syslog('ecommerceClientWordpressApi::connection is retrying on status code '.$response->getStatusCode(), LOG_WARNING);
+						return true;
+					}
+
+					// Retry on connection exceptions
+					if ($exception instanceof RequestException && $exception->getCode() === 0) {
+						return true;
+					}
+
+					return false;
+				},
+				function ($retries) {
+					// Define a delay function (e.g., exponential backoff)
+					return (int) pow(2, $retries) * 1000; // Delay in milliseconds
+				}
+			);
+
+			// Add the retry middleware to the handler stack
+			$stack->push($retryMiddleware);
+
+			$userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)';
+			if (!empty($conf->global->ECOMMERCE_USER_AGENT)) {
+				$userAgent = $conf->global->ECOMMERCE_USER_AGENT;
+			}
 			$options = [
 				// Base URI is used with relative requests
 				'base_uri' => $this->api_url,
 				// You can set any number of default request options.
 				'timeout' => $timeout,
+				// 'cookies' => true,
+				'headers' => array('User-Agent' => $userAgent),
+				'handler' => $stack,
 			];
 			if (!empty($conf->global->ECOMMERCENG_WORDPRESS_NO_VERIFY_SSL)) $options['verify'] = false;
 
-			$this->client = new GuzzleHttp\Client($options);
+			$this->client = new Client($options);
 		} catch (Exception $e) {
 			$this->errors[] = $langs->trans('ECommerceErrorConnectAPI', $site->name);
 			$this->errors[] = $e->getMessage();

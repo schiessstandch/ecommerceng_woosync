@@ -25,8 +25,9 @@ create table llx_ecommerce_category
 	fk_category     	integer NOT NULL,		   
 	fk_site			integer NOT NULL,		
 	remote_id		integer NOT NULL,		 
-	remote_parent_id	integer DEFAULT NULL,	
-	last_update		datetime DEFAULT NULL		  
+	remote_parent_id	integer DEFAULT NULL,
+    other_data	    text DEFAULT NULL,
+	last_update		datetime DEFAULT NULL
 ) ENGINE=InnoDB COMMENT='Table transition remote site -  Dolibarr';
 
 

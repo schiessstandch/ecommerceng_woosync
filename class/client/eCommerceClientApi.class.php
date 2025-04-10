@@ -22,7 +22,7 @@
  */
 
 dol_include_once('/ecommerceng/class/business/eCommerceUtils.class.php');
-if (!class_exists('ComposerAutoloaderInite5f8183b6b110d1bbf5388358e7ebc94', false)) dol_include_once('/ecommerceng/vendor/autoload.php');
+if (!class_exists('GuzzleHttp\\Client')) dol_include_once('/ecommerceng/vendor/autoload.php');
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Psr\Http\Message\RequestInterface;

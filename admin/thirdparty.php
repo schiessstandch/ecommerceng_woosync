@@ -34,7 +34,7 @@ require_once(DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 
-$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "woocommerce@ecommerceng"));
+$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
 if (!$user->admin && !$user->rights->ecommerceng->site && !empty($conf->societe->enabled)) accessforbidden();
 
@@ -139,7 +139,7 @@ if ($action == 'set_options') {
 $form = new Form($db);
 $category_static = new Categorie($db);
 
-$wikihelp='';
+$wikihelp='EN:ECommerceNg_En|FR:ECommerceNg_Fr|ES:ECommerceNg_Es';
 llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp, '', 0, 0, array(
 	'/ecommerceng/js/form.js',
 ));
@@ -151,7 +151,7 @@ include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
 
 $head=ecommercengConfigSitePrepareHead($object);
 
-dol_fiche_head($head, 'thirdparty', $langs->trans("Module107100Name"), 0, 'eCommerce@ecommerceng');
+print dol_get_fiche_head($head, 'thirdparty', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
 
 /**
  * Settings.

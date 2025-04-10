@@ -33,7 +33,7 @@ dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 
 use OAuth\Common\Storage\DoliStorage;
 
-$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "woocommerce@ecommerceng"));
+$langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
 if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
 
@@ -75,11 +75,12 @@ if ($action == 'set_options') {
 	$object->name = GETPOST('site_name', 'alphanohtml');
 	$object->api_version = GETPOST('site_api_version', 'alphanohtml');
 	$object->webservice_address = GETPOST('site_webservice_address', 'alphanohtml');
-	$object->authentication_type = GETPOST('site_authentication_type', 'az09');
+	$object->authentication_type = GETPOST('site_authentication_type', 'aZ09');
 	$object->user_name = GETPOST('site_user_name', 'alphanohtml');
 	$object->user_password = GETPOST('site_user_password', 'none');
 	$object->timeout = GETPOST('site_timeout', 'int');
 	$object->debug = GETPOST('site_debug', 'int') ? 1 : 0;
+	$object->parameters['site_api_include_post_parameters_in_signature'] = GETPOST('site_api_include_post_parameters_in_signature', 'int');
 
 	if(empty($object->name)) {
 		setEventMessage($langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("ECommerceSiteName")), 'errors');
@@ -182,9 +183,13 @@ if ($action == 'set_options') {
 			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_date_on_sale_to_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDateOnSaleTo', $object->name), 'date', 8, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
 			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_manage_stock_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceManageStock', $object->name), 'boolean', 9, '', 'product', 0, 0, '1', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
 			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_dont_update_stock_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDontUpdateStock', $object->name), 'boolean', 10, '', 'product', 0, 0, '0', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+			if (version_compare(DOL_VERSION, '20.0', '>=')) {
+				$res = $extrafields->update("ecommerceng_tax_class_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceTaxClass', $object->name), 'sellist', '', 'product', 0, 0, 4, array('options' => array("c_ecommerceng_tax_class:label:code::((active:=:1) AND (site_id:=:{$object->id}) AND (entity:=:{$conf->entity}))" => null)), 0, '0', 1, 0, '', '', '', 'ecommerceng@ecommerceng', '1', 'false');
+			}
 			// Order
 			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_online_payment_{$conf->entity}", 'ECommercengWoocommerceOnlinePayment', 'boolean', 1, '', 'commande', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
 			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_status_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceOrderStatus', $object->name), 'select', 2, '', 'commande', 0, 0, '', array('options' => array(
+				"0_checkout-draft" => $langs->trans('ECommercengWoocommerceOrderStatusDraft'),
 				"0_pending" => $langs->trans('ECommercengWoocommerceOrderStatusPending'),
 				"1_on-hold" => $langs->trans('ECommercengWoocommerceOrderStatusOnHold'),
 				"2_processing" => $langs->trans('ECommercengWoocommerceOrderStatusProcessing'),
@@ -233,7 +238,7 @@ if ($action == 'set_options') {
 } elseif ($action == 'set_wordpress_api_options' && $object->id > 0) {
 	$object->oldcopy = clone $object;
 
-	$object->wordpress_authentication_type = GETPOST('wordpress_authentication_type', 'az09');
+	$object->wordpress_authentication_type = GETPOST('wordpress_authentication_type', 'aZ09');
 	$object->wordpress_authentication_login = !empty($object->wordpress_authentication_type) ? GETPOST('wordpress_authentication_login', 'none') : '';
 	$object->wordpress_authentication_password = !empty($object->wordpress_authentication_type) ? GETPOST('wordpress_authentication_password', 'none') : '';
 	$object->wordpress_timeout = !empty($object->wordpress_authentication_type) ? GETPOST('wordpress_timeout', 'int') : 0;
@@ -278,7 +283,7 @@ if ($action == 'set_options') {
 
 $form = new Form($db);
 
-$wikihelp='';
+$wikihelp='EN:ECommerceNg_En|FR:ECommerceNg_Fr|ES:ECommerceNg_Es';
 llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp);
 
 $formconfirm = '';
@@ -306,7 +311,7 @@ include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
 
 $head=ecommercengConfigSitePrepareHead($object);
 
-dol_fiche_head($head, 'settings', $langs->trans("Module107100Name"), 0, 'eCommerce@ecommerceng');
+print dol_get_fiche_head($head, 'settings', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
 
 if ($object->id > 0) {
 	print '<div class="tabsAction tabsActionNoBottom">';
@@ -392,6 +397,14 @@ print '<td class="fieldrequired">'.$langs->trans("ECommerceUserPassword").'</td>
 print '<td>'.$langs->transnoentities("ECommerceUserPasswordDescription").'</td>'."\n";
 print '<td class="right">' . "\n";
 print '<input type="password" class="flat centpercent" name="site_user_password" value="' . dol_escape_htmltag($object->user_password) . '">' . "\n";
+print '</td></tr>' . "\n";
+
+// Site API include post parameters in signature
+print '<tr class="oddeven">' . "\n";
+print '<td>'.$langs->trans("ECommerceApiIncludePostParametersInSignature").'</td>'."\n";
+print '<td>'.$langs->trans("ECommerceApiIncludePostParametersInSignatureDescription").'</td>'."\n";
+print '<td class="right">' . "\n";
+print '<input type="checkbox" name="site_api_include_post_parameters_in_signature" value="1"' . (!empty($object->parameters['site_api_include_post_parameters_in_signature']) ? ' checked' : '') . ' />' . "\n";
 print '</td></tr>' . "\n";
 
 // Site API timeout

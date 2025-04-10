@@ -1,5 +1,155 @@
 # ChangeLog
 
+## [14.0.43] - 09-04-2025
+- Correction mise a jour du statut de la commande de dolibarr vers woocommerce
+
+## [14.0.42] - 09-04-2025
+- Ne modifie plus la donnée fk_country lors de la synchro d'un produit de woocommerce vers dolibarr
+
+## [14.0.41] - 09-04-2025
+- Correction de l'affichage des ID distant sur les listes quelque soit les versions
+
+## [14.0.40] - 09-04-2025
+- Correction mise a jour du statut de la commande de dolibarr vers woocommerce
+- Compatibilité dolibarr v21
+
+## [14.0.39] - 21-03-2025
+- Correction synchronisation de dolibarr vers le site des meta-données pour les tiers et commandes
+- Compatibilité dolibarr v21
+
+## [14.0.38] - 20-03-2025
+- Correction champ complementaire de type liste issue d'une table compatibilité v20+ (pour corriger, resauvegarder les parametrages de connexion du site)
+
+## [14.0.37] - 20-03-2025
+- Ajout de l'affichage de la derniere date de mise a jour sur l'écran de synchronisation du site (avec la possibilité de la supprimé)
+
+## [14.0.36] - 19-03-2025
+- Correction warning php
+
+## [14.0.35] - 05-02-2025
+- Correction de l'affichage des ID distant sur les listes, compatibilité dolibarr antérieure à v18 (pour la liste des contacts)
+
+## [14.0.34] - 05-03-2025
+- Correction de prise en compte du trigger d'affectation d'un tag produit
+
+## [14.0.33] - 26-02-2025
+- Correction de l'affichage des ID distant sur les listes contacts et produits, compatibilité easya 2024
+
+## [14.0.32] - 05-02-2025
+- Correction de l'affichage des ID distant sur les listes, compatibilité dolibarr antérieure à v19 (pour la liste des contacts) et v13 (pour la liste des tiers)
+
+## [14.0.31] - 31-01-2025
+- Corrections du formatage du nom du produit variant lors de la  synchro de Woocomerce vers dolibarr  
+  - Cas 1: nom du variant vide => nom du produit = nom du parent + liste des attributs
+  - Cas 2: nom du variant non vide => text épuré = nom du variant moins le nom du parent avec ou sans ' - ' => nom du produit = nom du parent + text épuré ou liste des attributs si vide
+
+## [14.0.30] - 22-01-2025
+- Corrections de la prise en compte de choix multiples pour l'option "Rôles utilisateurs supportés" si l'on ne renseigne aucun role dans la configuration
+- Suppression de la derniere date de synchro sur les produits/commandes/tiers lors de la suppression des liens/données via la zone dangereuse
+- Correction lors de la mise a jour des données de configuration d'anciennes versions vers la derniere (cas des modele d'email sur les mode de paiement des commandes qui s'effacais)
+
+## [14.0.29] - 21-01-2025
+- Corrections erreur string + int
+
+## [14.0.28] - 17-01-2025
+- Corrections erreur string + int
+
+## [14.0.27] - 17-01-2025
+- Corrections
+
+## [14.0.26] - 17-01-2025
+- Ajout de du statut brouillion dans la liste des statuts du champs supplementaire "Statut sur le site ..." sur les commandes
+- Ne prend pas en compte les contacts désativé lors des recherche de contact ou de tiers via un contact 
+
+## [14.0.25] - 14-01-2025
+- Ajout de l'option sur le parametrage des commande du site : Langue de la commande par défaut si WPML ne fournit pas la langue
+- Correction message d'erreurs
+
+## [14.0.24] - 06-01-2025
+- Correctf : gestion du chargement de la dépendance GuzzleHttp
+
+## [14.0.23] - 06-01-2025
+- Ajout de l'affichage des id distants pour les sites ecommerces synchronisé ("ID sur les boutiques") sur la liste des tiers, contacts et produits
+
+## [14.0.22] - 20-12-2024
+- Ajout de l'affichage des id distants pour les sites ecommerces synchronisé ("ID sur les boutiques") sur la fiche des catégories, tiers, contacts et produits
+
+## [14.0.21] - 02-12-2024
+- Correction de la prise en compte de choix multiples pour l'option "Rôles utilisateurs supportés"
+
+## [14.0.20] - 27-11-2024
+- Ajout d'une option dans l'onglet de paramétrage des commandes : 'Ne pas inserer la description longue du produit sur WooCommerce (traduite) dans la ligne de produit'
+
+## [14.0.19] - 26-11-2024
+- Correction du cas de synchronisation d'une commande dont un produit a été supprimé definitivement sur woocommerce avec le plugin WPML d'activé
+
+## [14.0.18] - 13-11-2024
+- Correction option pour inclure ou non les données POST dans la génération de la signature d'authentification
+
+## [14.0.17] - 08-11-2024
+- Ajout d'une nouvelle option pour inclure ou non les données POST dans la génération de la signature d'authentification
+
+## [14.0.16] - 09-10-2024
+- Correction de la mise a jour du niveau de prix dans la configuration
+
+## [14.0.15] - 09-10-2024
+- Fix acces bouton mise a jour des catégories de dolibarr vers woocommerce depuis la page du site 
+
+## [14.0.14] - 04-10-2024
+- Fix bug on dimensions unit convertion by benvia
+- PHP 82 Compat : Initialize variable
+- Allow guzzle to retry (5 time) if api fails and add a user agent by frederic34
+- Fix sanitization and settings saving issues with Dolibarr 20 by medtr-git
+- Fix Ambiguous ‘rowid’ Column in Web Hooks List Query Count by medtr-git
+- Correction fichier langue
+
+## [14.0.13] - 04-08-2024
+- Correction du traitement des webhooks : produit puis commande dans l'ordre du plus recent au plus vieux
+- Correction affichage de l'ordre de la liste des Webhooks
+
+## [14.0.12] - 30-08-2024
+- Correction et amelioration du support WPML pour les produits variables traduits synchronisés
+- Correction de la recuperation de l'id du pays pour les code pays des domtom
+
+## [14.0.11] - 22-08-2024
+- Correction et amelioration du support WPML pour les produits variables traduits synchronisés
+- Correction de warnings et divers
+
+## [14.0.10] - 21-08-2024
+- Correction et amelioration du support WPML pour les produits traduits synchronisés via les crochets WEB
+
+## [14.0.9] - 20-08-2024
+- Correction du support WPML pour les produits traduits synchronisés via les crochets WEB
+
+## [14.0.8] - 14-08-2024
+- Correction du nettoyage des id distants en doublons par site
+- Precision lors d'un message d'erreur lors de la synchro des categories
+- Correction d'une synchro du site vers dolibarr de produit avec creation lorsque le code-barre est obligatoire, il est generé maintenant automatiquement
+
+## [14.0.7] - 01-08-2024
+- Correction de la synchro des modes de paiements
+
+## [14.0.6] - 10-07-2024
+- Correction compatibilité PHP 8.2
+
+## [14.0.5] - 25-06-2024
+- Debloque la possibilité de mettre a jour les produit de dolibarr vers WooCommerce même si la synchro descandant des categories et produits n'as pas été effectué
+
+## [14.0.4] - 21-06-2024
+- Ajout de la synchronisation des Mode(s) d’expédition par zone
+- Ajout du choix de l'entrepot synchronisée en fonction du choix du mode d'expedition
+- Correction de la synchro des meta-données vers woocommerce en convertissant en string
+- Modification de l'ecran de parametrage de de l'onglet "stocks"
+
+## [14.0.3] - 17-06-2024
+- Ajout version de PHP.
+
+## [14.0.2] - 04-06-2024
+- Changement de marque, page support, ajout CI, corrections de coquilles, lien documentation.
+
+## [14.0.1]
+- Changement de numérotation
+
 ## 4.1.75
 - Correction de la recuperation du libéllé du produit ('MISSING LABEL' lors de la synchro d'un produit du site vers dolibarr) et que l'on est en multi-langues
 
@@ -890,3 +1040,48 @@
 ## 3.9.0.0
 
 - Initial version.
+
+
+[Non Distribué]: https://github.com/OPEN-DSI/ecommerceng_woosync/compare/14.0.43...HEAD
+[14.0.43]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.43
+[14.0.42]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.42
+[14.0.41]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.41
+[14.0.40]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.40
+[14.0.39]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.39
+[14.0.38]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.38
+[14.0.37]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.37
+[14.0.36]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.36
+[14.0.35]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.35
+[14.0.34]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.34
+[14.0.33]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.33
+[14.0.32]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.32
+[14.0.31]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.31
+[14.0.30]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.30
+[14.0.29]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.29
+[14.0.28]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.28
+[14.0.27]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.27
+[14.0.26]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.26
+[14.0.25]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.25
+[14.0.24]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.24
+[14.0.23]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.23
+[14.0.22]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.22
+[14.0.21]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.21
+[14.0.20]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.20
+[14.0.19]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.19
+[14.0.18]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.18
+[14.0.17]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.17
+[14.0.16]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.16
+[14.0.15]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.15
+[14.0.14]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.14
+[14.0.13]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.13
+[14.0.12]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.12
+[14.0.11]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.11
+[14.0.10]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.10
+[14.0.9]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.9
+[14.0.8]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.8
+[14.0.7]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.7
+[14.0.6]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.6
+[14.0.5]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.5
+[14.0.4]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.4
+[14.0.3]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.3
+[14.0.2]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.2

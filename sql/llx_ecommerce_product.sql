@@ -22,6 +22,7 @@ CREATE TABLE llx_ecommerce_product (
   fk_site integer NOT NULL,
   remote_id varchar(255) NOT NULL,
   lang varchar(255) default NULL,
+  other_data	    text DEFAULT NULL,
   last_update datetime default NULL,
   last_update_stock datetime default NULL
 ) ENGINE=InnoDB COMMENT='Table transition remote site -  Dolibarr';

@@ -101,6 +101,8 @@ class InterfaceECommerceng
 
 		$error = 0;
 
+		$link_object = null;
+		$link_action = '';
 		if ($action == 'CATEGORY_LINK') {
 			$link_to = null;
 			if (isset($object->linkto)) {
@@ -111,10 +113,8 @@ class InterfaceECommerceng
 			if (isset($link_to->element)) {
 				switch ($link_to->element) {
 					case 'product':
-						//$cat_link_action_old = $action;
-						//$cat_link_object_old = $object;
-						$action = 'PRODUCT_MODIFY';
-						$object = $link_to;
+						$link_action = 'PRODUCT_MODIFY';
+						$link_object = $link_to;
 						break;
 				}
 			}
@@ -357,9 +357,15 @@ class InterfaceECommerceng
 			}
 		}
 
-		if ($action == 'PRODUCT_MODIFY' || $action == 'PRODUCT_SET_MULTILANGS') {
-			if ($object->element != 'product') {
-				$error_msg = "Trigger : Object element (" . $object->element . ") is not a product for the action " . $action;
+		if ($action == 'PRODUCT_MODIFY' || $action == 'PRODUCT_SET_MULTILANGS' || ($link_action == 'PRODUCT_MODIFY' && is_object($link_object))) {
+			if ($link_action == 'PRODUCT_MODIFY') {
+				$object_to_process = $link_object;
+			} else {
+				$object_to_process = $object;
+			}
+
+			if ($object_to_process->element != 'product') {
+				$error_msg = "Trigger : Object element (" . $object_to_process->element . ") is not a product for the action " . $action;
 				dol_syslog($error_msg, LOG_ERR);
 				$this->errors[] = $error_msg;
 				return -1;
@@ -367,7 +373,7 @@ class InterfaceECommerceng
 			$this->db->begin();
 
 			$save_entity = $conf->entity;
-			$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - Action {$action} (ID: {$object->id})");
+			$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - Action {$action} (ID: {$object_to_process->id})");
 
 			// Get current categories and subcategories
 			require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
@@ -376,7 +382,7 @@ class InterfaceECommerceng
 			if (isset($_POST['categories'])) {
 				$cats = GETPOST('categories');
 			} else {
-				$cats = $c->containing($object->id, Categorie::TYPE_PRODUCT, 'id');
+				$cats = $c->containing($object_to_process->id, Categorie::TYPE_PRODUCT, 'id');
 			}
 			foreach ($cats as $cat) {
 				$c->id = $cat;
@@ -391,7 +397,7 @@ class InterfaceECommerceng
 			$eCommerceSite = new eCommerceSite($this->db);
 			$sites = $eCommerceSite->listSites('object');
 			$entities = explode(',', getEntity('product'));
-			$object->context['ec_price_entities'] = explode(',', getEntity('productprice'));
+			$object_to_process->context['ec_price_entities'] = explode(',', getEntity('productprice'));
 
 			foreach ($sites as $site) {
 				if (!in_array($site->fk_cat_product, $categories)) {
@@ -399,7 +405,7 @@ class InterfaceECommerceng
 					continue;
 				}
 
-				if ($object->context['fromsyncofecommerceid'] && $object->context['fromsyncofecommerceid'] == $site->id) {
+				if (isset($object_to_process->context['fromsyncofecommerceid']) && $object_to_process->context['fromsyncofecommerceid'] == $site->id) {
 					dol_syslog("Triggers was ran from a create/update to sync from ecommerce to dolibarr, so we won't run code to sync from dolibarr to ecommerce");
 					continue;
 				}
@@ -418,7 +424,7 @@ class InterfaceECommerceng
 					$site->setEntityValues($site->entity);
 
 					$eCommerceProduct = new eCommerceProduct($this->db);
-					$eCommerceProduct->fetchByProductId($object->id, $site->id);
+					$eCommerceProduct->fetchByProductId($object_to_process->id, $site->id);
 
 					if ($eCommerceProduct->remote_id > 0) {
 						$eCommerceSynchro = new eCommerceSynchro($this->db, $site);
@@ -431,9 +437,9 @@ class InterfaceECommerceng
 
 						if (!$error) {
 							if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
-								$object->price = $object->multiprices[$site->price_level];
+								$object_to_process->price = $object_to_process->multiprices[$site->price_level];
 							}
-							$result = $eCommerceSynchro->eCommerceRemoteAccess->updateRemoteProduct($eCommerceProduct->remote_id, $object);
+							$result = $eCommerceSynchro->eCommerceRemoteAccess->updateRemoteProduct($eCommerceProduct->remote_id, $object_to_process);
 							$now = dol_now();
 							if (!$result) {
 								$error++;
@@ -448,14 +454,14 @@ class InterfaceECommerceng
 							if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
 							if ($eCommerceProduct->update($user) < 0) {
 								$error++;
-								$error_msg = $langs->trans('ECommerceUpdateRemoteProductLink', $object->id, $site->name, $eCommerceProduct->error);
+								$error_msg = $langs->trans('ECommerceUpdateRemoteProductLink', $object_to_process->id, $site->name, $eCommerceProduct->error);
 								$this->errors[] = $error_msg;
 								$this->errors = array_merge($this->errors, $eCommerceProduct->errors);
 								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
 							}
 						}
 					} else {
-						dol_syslog("Product with id " . $object->id . " is not linked to an ecommerce record but has category flag to push on eCommerce. So we push it");
+						dol_syslog("Product with id " . $object_to_process->id . " is not linked to an ecommerce record but has category flag to push on eCommerce. So we push it");
 
 						$eCommerceSynchro = new eCommerceSynchro($this->db, $site);
 						dol_syslog("Trigger " . $action . " try to connect to eCommerce site " . $site->name);
@@ -466,10 +472,10 @@ class InterfaceECommerceng
 						}
 
 						if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
-							$object->price = $object->multiprices[$site->price_level];
+							$object_to_process->price = $object_to_process->multiprices[$site->price_level];
 						}
 
-						$result = $eCommerceSynchro->eCommerceRemoteAccess->createRemoteProduct($object);
+						$result = $eCommerceSynchro->eCommerceRemoteAccess->createRemoteProduct($object_to_process);
 						$now = dol_now();
 						if (!$result) {
 							$error++;
@@ -479,14 +485,14 @@ class InterfaceECommerceng
 
 						if (!$error) {
 							$remote_id = $result['remote_id'];
-							$object->url = $result['remote_url'];
-							$object->context['fromsyncofecommerceid'] = $site->id;
-							$result = $object->update($object->id, $user);
+							$object_to_process->url = $result['remote_url'];
+							$object_to_process->context['fromsyncofecommerceid'] = $site->id;
+							$result = $object_to_process->update($object_to_process->id, $user);
 							if ($result < 0) {
 								$error++;
 								$error_msg = $langs->trans('ECommerceUpdateProduct');
 								$this->errors[] = $error_msg;
-								$this->errors = array_merge($this->errors, $object->errors);
+								$this->errors = array_merge($this->errors, $object_to_process->errors);
 								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
 							}
 						}
@@ -495,13 +501,13 @@ class InterfaceECommerceng
 							// Create remote link
 							$eCommerceProduct->last_update = dol_print_date($now, '%Y-%m-%d %H:%M:%S');
 							if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
-							$eCommerceProduct->fk_product = $object->id;
+							$eCommerceProduct->fk_product = $object_to_process->id;
 							$eCommerceProduct->fk_site = $site->id;
 							$eCommerceProduct->remote_id = $remote_id;
 							$res = $eCommerceProduct->create($user);
 							if ($res < 0) {
 								$error++;
-								$error_msg = $langs->trans('ECommerceCreateRemoteProductLink', $object->id, $site->name, $eCommerceProduct->error);
+								$error_msg = $langs->trans('ECommerceCreateRemoteProductLink', $object_to_process->id, $site->name, $eCommerceProduct->error);
 								$this->errors[] = $error_msg;
 								$this->errors = array_merge($this->errors, $eCommerceProduct->errors);
 								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
@@ -515,12 +521,12 @@ class InterfaceECommerceng
 						// Force the ability to run synchDtoEProduct() in case the association with the categories has changed
 						$eCommerceProduct->last_update = dol_print_date((dol_now() + 10), '%Y-%m-%d %H:%M:%S');
 
-						$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET tms = '" . $eCommerceProduct->last_update . "' WHERE rowid = " . $object->id;
+						$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET tms = '" . $eCommerceProduct->last_update . "' WHERE rowid = " . $object_to_process->id;
 						$resql = $this->db->query($sql);
 						if (!$resql) {
 							$error++;
 							// Todo traduction du texte de l'erreur
-							$this->error = 'Error update modification date of product "' . $object->ref . '" : ' . $this->db->lasterror();
+							$this->error = 'Error update modification date of product "' . $object_to_process->ref . '" : ' . $this->db->lasterror();
 							$this->errors[] = $this->error;
 						}
 					}
@@ -586,7 +592,7 @@ class InterfaceECommerceng
 			$entities = explode(',', getEntity('commande'));
 
 			foreach ($sites as $site) {
-				if ($obj->context['fromsyncofecommerceid'] && $obj->context['fromsyncofecommerceid'] == $site->id) {
+				if (isset($obj->context['fromsyncofecommerceid']) && $obj->context['fromsyncofecommerceid'] == $site->id) {
 					dol_syslog("Triggers was ran from a create/update to sync from ecommerce to dolibarr, so we won't run code to sync from dolibarr to ecommerce");
 					continue;
 				}

@@ -1,0 +1,1 @@
+- Ajout de l'affichage de la derniere date de mise a jour sur l'écran de synchronisation du site (avec la possibilité de la supprimé)

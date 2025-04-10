@@ -59,3 +59,7 @@ ALTER TABLE llx_ecommerceng_payment_gateways CHANGE COLUMN mail_model_for_send_i
 -- v4.1.57
 ALTER TABLE llx_ecommerceng_remote_warehouses DROP INDEX uk_ecommerceng_remote_warehouses;
 ALTER TABLE llx_ecommerceng_remote_warehouses ADD UNIQUE INDEX uk_ecommerceng_remote_warehouses(site_id,remote_id,entity);
+
+-- v14.0.8
+ALTER TABLE llx_ecommerce_category ADD COLUMN other_data text DEFAULT NULL after remote_parent_id;
+ALTER TABLE llx_ecommerce_product ADD COLUMN other_data text DEFAULT NULL after lang;

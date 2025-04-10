@@ -5,7 +5,7 @@ dol_include_once("/ecommerceng/lib/eCommerce.lib.php");
 $form = new Form($db);
 
 $linkback='';
-print load_fiche_titre($langs->trans("ECommerceDashboard"), $linkback, 'eCommerceTitle@ecommerceng');
+print load_fiche_titre($langs->trans("ECommerceDashboard"), $linkback, 'title_setup');
 
 print '<br>';
 

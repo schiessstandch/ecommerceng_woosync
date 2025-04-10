@@ -1,12 +1,18 @@
 <?php
 
+/**
+ * @var eCommerceSynchro    $synchro
+ */
+
 llxHeader();
 
 if (is_object($site)) {
 	dol_include_once("/ecommerceng/lib/eCommerce.lib.php");
 	$linkback = '<a href="index.php">' . $langs->trans("BackToListOfSites") . '</a>';
 
-	print_fiche_titre($langs->trans('ECommerceSiteSynchro') . ' ' . $site->name, $linkback, 'eCommerceTitle@ecommerceng');
+	//print_fiche_titre($langs->trans('ECommerceSiteSynchro') . ' ' . $site->name, $linkback, 'eCommerceTitle@ecommerceng');
+
+	print load_fiche_titre($langs->trans("ECommerceSiteSynchro"), $linkback, 'title_setup');
 
 	print '<br>';
 
@@ -15,7 +21,9 @@ if (is_object($site)) {
 	$head[1][1] = $langs->trans("Direction") . ' : Ecommerce -> Dolibarr';
 	$head[1][2] = 'ecommerce2dolibarr';
 
-	dol_fiche_head($head, 'ecommerce2dolibarr', '');
+	// dol_fiche_head($head, 'ecommerce2dolibarr', '');
+
+	print dol_get_fiche_head($head, 'ecommerce2dolibarr', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
 
 	$disabled = $synchRights != true && empty($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION);
 
@@ -109,10 +117,7 @@ if (is_object($site)) {
 				<?php if ($synchRights == true): ?><td>&nbsp;</td><?php endif; ?>
 			</tr>
 
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
+			<tr class="oddeven">
 				<td><?php print $langs->trans('ECommerceCategoriesProducts') ?></td>
 				<td><?php print $nbCategoriesInDolibarr; ?> *</td>
 				<td><?php print $nbCategoriesInDolibarrLinkedToE;
@@ -136,11 +141,18 @@ if (is_object($site)) {
 					</td>
 				<?php } ?>
 			</tr>
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
-				<td><?php print $langs->trans('ProductsOrServices') ?></td>
+			<tr class="oddeven">
+				<td><?php print $langs->trans('ProductsOrServices') ?>
+					<?php
+					if (isset($synchro)) {
+						$last_update_date = $synchro->getProductLastUpdateDate();
+						print ' ( ' . $langs->trans('ECommerceLastUpdate') . ' : ' . (empty($last_update_date) ? 'N/A' : dol_print_date($last_update_date, 'dayhour')) . ' )';
+						if (!empty($conf->global->ECOMMERCENG_SHOW_DEBUG_TOOLS)) {
+							print '<div class="debugtools inline-block">&nbsp;(<a class="submit_reset_last_update_date" style="color: #600" href="' . $_SERVER["PHP_SELF"] . '?id=' . $site->id . '&reset_last_update_date=product&token=' . ecommercengNewToken() . '">' . $langs->trans("ClearLastUpdateDate") . '</a>)</div>';
+						}
+					}
+					?>
+                </td>
 				<td><?php print $nbProductInDolibarr; ?> **</td>
 				<td><?php print $nbProductInDolibarrLinkedToE; ?> **
 					<?php
@@ -168,13 +180,19 @@ if (is_object($site)) {
 					</td>
 				<?php endif; ?>
 			</tr>
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
+			<tr class="oddeven">
 				<td><?php print $langs->trans('ECommerceSociete') ?> (<?php print $langs->trans('ECommerceOnlyNew') ?>
 					)
-				</td>
+					<?php
+					if (isset($synchro)) {
+						$last_update_date = $synchro->getSocieteLastUpdateDate();
+						print ' ( ' . $langs->trans('ECommerceLastUpdate') . ' : ' . (empty($last_update_date) ? 'N/A' : dol_print_date($last_update_date, 'dayhour')) . ' )';
+						if (!empty($conf->global->ECOMMERCENG_SHOW_DEBUG_TOOLS)) {
+							print '<div class="debugtools inline-block">&nbsp;(<a class="submit_reset_last_update_date" style="color: #600" href="' . $_SERVER["PHP_SELF"] . '?id=' . $site->id . '&reset_last_update_date=thirdparty&token=' . ecommercengNewToken() . '">' . $langs->trans("ClearLastUpdateDate") . '</a>)</div>';
+						}
+					}
+					?>
+                </td>
 				<td><?php print $nbSocieteInDolibarr; ?> ***</td>
 				<td><?php print $nbSocieteInDolibarrLinkedToE; ?> ***
 					<?php
@@ -195,11 +213,18 @@ if (is_object($site)) {
 					</td>
 				<?php endif; ?>
 			</tr>
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
-				<td><?php print $langs->trans('ECommerceCommande') ?></td>
+			<tr class="oddeven">
+				<td><?php print $langs->trans('ECommerceCommande') ?>
+					<?php
+					if (isset($synchro)) {
+						$last_update_date = $synchro->getCommandeLastUpdateDate();
+						print ' ( ' . $langs->trans('ECommerceLastUpdate') . ' : ' . (empty($last_update_date) ? 'N/A' : dol_print_date($last_update_date, 'dayhour')) . ' )';
+						if (!empty($conf->global->ECOMMERCENG_SHOW_DEBUG_TOOLS)) {
+							print '<div class="debugtools inline-block">&nbsp;(<a class="submit_reset_last_update_date" style="color: #600" href="' . $_SERVER["PHP_SELF"] . '?id=' . $site->id . '&reset_last_update_date=order&token=' . ecommercengNewToken() . '">' . $langs->trans("ClearLastUpdateDate") . '</a>)</div>';
+						}
+					}
+					?>
+                </td>
 				<?php
 				if (empty($conf->commande->enabled)) {
 					?>
@@ -236,10 +261,10 @@ if (is_object($site)) {
 				?>
 			</tr>
 			<?php
-			/*$var = !$var;
+			/*
 			if (!empty($conf->facture->enabled)) {
 				?>
-				<tr <?php print $bc[$var] ?>>
+				<tr class="oddeven">
 					<td><?php print $langs->trans('ECommerceFacture') ?></td>
 					<td><?php print $nbFactureInDolibarr; ?></td>
 					<td><?php print $nbFactureInDolibarrLinkedToE; ?>
@@ -339,11 +364,7 @@ if (is_object($site)) {
 					<td>&nbsp;</td>
 				<?php } ?>
 			</tr>
-
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
+            <tr class="oddeven">
 				<td><?php print $langs->trans('ECommerceCategoriesProducts') ?></td>
 				<td><?php print $nbCategoriesInDolibarr ?> *</td>
 				<td><?php print $nbCategoriesInDolibarrLinkedToE ?> *</td>
@@ -352,17 +373,13 @@ if (is_object($site)) {
 					<td>
 						<?php if ($nbCategoriesToUpdateDToE > 0) { ?>
 							<input type="submit" name="submit_dtoe_synchro_category" id="submit_dtoe_synchro_category"
-								   class="button"<?php print ($nbCategoriesToUpdate > 0 ? ' disabled="disabled"' : '') ?>
-								   value="<?php print ($nbCategoriesToUpdate > 0 ? $langs->trans('ECommerceSynchronizeCategoryProduct') . ' (' . $langs->trans("SyncCategFirst") . ")" : $langs->trans('ECommerceSynchronizeCategoryProduct')) ?>">
+								   class="button"<?php print ($nbCategoriesToUpdate != '?' && $nbCategoriesToUpdate > 0 ? ' disabled="disabled"' : '') ?>
+								   value="<?php print ($nbCategoriesToUpdate != '?' && $nbCategoriesToUpdate > 0 ? $langs->trans('ECommerceSynchronizeCategoryProduct') . ' (' . $langs->trans("SyncCategFirst") . ")" : $langs->trans('ECommerceSynchronizeCategoryProduct')) ?>">
 						<?php } ?>
 					</td>
 				<?php } ?>
 			</tr>
-
-			<?php
-			$var = !$var;
-			?>
-			<tr <?php print $bc[$var] ?>>
+			<tr class="oddeven">
 				<td><?php print $langs->trans('ProductsOrServices') ?></td>
 				<td><?php print $nbProductInDolibarr ?> **</td>
 				<td><?php print $nbProductInDolibarrLinkedToE ?> **</td>
@@ -371,8 +388,8 @@ if (is_object($site)) {
 					<td>
 						<?php if ($nbProductToUpdateDToE > 0) { ?>
 							<input type="submit" name="submit_dtoe_synchro_product" id="submit_dtoe_synchro_product"
-								   class="button"<?php print ($nbCategoriesToUpdateDToE > 0 || $nbCategoriesToUpdate > 0 || $nbProductToUpdate > 0 ? ' disabled="disabled"' : '') ?>
-								   value="<?php print ($nbCategoriesToUpdate > 0 || $nbProductToUpdate > 0 || $nbCategoriesToUpdateDToE > 0 ? $langs->trans('ECommerceSynchronizeProduct') . ' (' . ($nbProductToUpdate > 0 ? $langs->trans("SyncProductFirst") : $langs->trans("SyncCategFirst")) . ")" : $langs->trans('ECommerceSynchronizeProduct')) ?>">
+								   class="button"<?php print ($nbCategoriesToUpdateDToE != '?' && $nbCategoriesToUpdateDToE > 0 ? ' disabled="disabled"' : '') ?>
+								   value="<?php print ($nbCategoriesToUpdateDToE != '?' && $nbCategoriesToUpdateDToE > 0 ? $langs->trans('ECommerceSynchronizeProduct') . ' (' . ($nbProductToUpdate != '?' && $nbProductToUpdate > 0 ? $langs->trans("SyncProductFirst") : $langs->trans("SyncCategFirst")) . ")" : $langs->trans('ECommerceSynchronizeProduct')) ?>">
 						<?php } ?>
 					</td>
 				<?php } ?>
@@ -416,10 +433,13 @@ if (is_object($site)) {
 		<script type=\"text/javascript\">
         jQuery(document).ready(function() {
 		$('.submit_reset_data_links').on('click', function () {
-		    return confirm('" . dol_escape_js($langs->trans("AreYouSureYouWantToDeleteLinks")) . "');
+		    return confirm('" . dol_escape_js($langs->transnoentitiesnoconv("AreYouSureYouWantToDeleteLinks")) . "');
 		});
         $('.submit_reset_data_all').on('click', function () {
-		    return confirm('" . dol_escape_js($langs->trans("AreYouSureYouWantToDeleteAll")) . "');
+		    return confirm('" . dol_escape_js($langs->transnoentitiesnoconv("AreYouSureYouWantToDeleteAll")) . "');
+		});
+		$('.submit_reset_last_update_date').on('click', function () {
+		    return confirm('" . dol_escape_js($langs->transnoentitiesnoconv("AreYouSureYouWantToDeleteLastUpdateDate")) . "');
 		});
 		$('#showtools').on('click', function () {
 		    jQuery('.nodebugtools').toggle();

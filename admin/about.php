@@ -75,7 +75,8 @@ llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp);
 $linkback='<a href="'.DOL_URL_ROOT.'/admin/modules.php">'.$langs->trans("BackToModuleList").'</a>';
 print load_fiche_titre($langs->trans("ECommerceSetup"),$linkback,'title_setup');
 
-include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
+// include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
+print '<br>';
 
 $head=ecommercengConfigSitePrepareHead($object);
 

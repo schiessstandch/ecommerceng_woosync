@@ -42,7 +42,7 @@ $langs->load("admin");
 $langs->load("ecommerce");
 
 // Protection if external user
-if ($user->societe_id > 0 || !$user->rights->ecommerceng->read) {
+if ($user->socid > 0 || !$user->rights->ecommerceng->read) {
 	accessforbidden();
 }
 
@@ -149,6 +149,10 @@ if ($id) {
 			}
 			if (GETPOST('reset_data') == 'all') {
 				$synchro->dropImportedAndSyncData(1);
+			}
+
+			if (in_array(GETPOST('reset_last_update_date'), array('product', 'thirdparty', 'order'))) {
+				$synchro->deleteLastUpdateDate(GETPOST('reset_last_update_date'));
 			}
 
 			if (GETPOST('submit_synchro_category') || GETPOST('submit_synchro_category_ajax') || GETPOST('submit_synchro_all')) {
