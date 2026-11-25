@@ -21,6 +21,7 @@
  *      \brief      This file for managing Client API
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/business/eCommerceUtils.class.php');
 if (!class_exists('GuzzleHttp\\Client')) dol_include_once('/ecommerceng/vendor/autoload.php');
 use GuzzleHttp\Client;
@@ -94,9 +95,10 @@ class eCommerceClientApi
 	 * @param   bool  	$without_prefix						Without api url prefix
 	 * @param   int  	$status_code						Status code returned
 	 * @param   int  	$error_info							Error info returned
+	 * @param   array  	$response_headers					Response headers returned
 	 * @return	array                 						null if KO otherwise result data
 	 */
-	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null)
+	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null, &$response_headers = null)
 	{
 		dol_syslog(__METHOD__ . " - method=" . $method . " url=" . $url . " options=" . json_encode($options) . " without_prefix=" . $without_prefix, LOG_NOTICE);
 		global $conf, $langs;
@@ -107,7 +109,8 @@ class eCommerceClientApi
 			$request_url = rtrim($this->api_url, '/') . '/' . ($without_prefix ? '' : trim($this->api_url_prefix, '/') . '/') . ltrim($url, '/');
 
 			// Disabled send data to site
-			if (in_array($method, [self::METHOD_POST, self::METHOD_PUT, self::METHOD_DELETE, self::METHOD_PATCH]) && !empty($conf->global->ECOMMERCE_DISABLED_SEND_DATA_TO_API)) {
+			if (in_array($method, [self::METHOD_POST, self::METHOD_PUT, self::METHOD_DELETE, self::METHOD_PATCH]) && !empty(ecommercengGetGlobalString('ECOMMERCE_DISABLED_SEND_DATA_TO_API'))) {
+				setEventMessages(__METHOD__ . " - method=" . $method . " url=" . $url . " options=" . json_encode($options) . " without_prefix=" . $without_prefix, [], 'warnings');
 				return [];
 			}
 
@@ -152,6 +155,9 @@ class eCommerceClientApi
 				}
 			}
 			dol_syslog(__METHOD__ . " - method=" . $method . " url=" . $url . " options=" . json_encode($options) . " without_prefix=" . $without_prefix . " - Data=" . json_encode($data), LOG_NOTICE);
+			if ($response_headers !== null) {
+				$response_headers = $response->getHeaders();
+			}
 			return $data;
 		} catch (RequestException $e) {
 			eCommerceUtils::stopAndLogStopwatch($stopwatch_id);

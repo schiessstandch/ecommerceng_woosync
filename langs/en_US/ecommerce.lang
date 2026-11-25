@@ -58,6 +58,10 @@ ECommerceTimeoutDescription                                                     
 ECommerceDebug                                                                                      =Debug Mode
 ECommerceDebugDescription                                                                           =Enable detailed debugging when connecting to the WooCommerce API
 ECommerceConfirmDelete                                                                              =Are you sure you want to delete this site?
+ECommerceDeleteProcessingWebHookShort                                                               =Unlock WebHooks sync
+ECommerceDeleteProcessingWebHookTitle                                                               =Unlock WebHooks synchronization
+ECommerceConfirmDeleteProcessingWebHook                                                             =The webhook processing cron job does not seem to have finished correctly. Are you sure you want to delete the synchronization lock?
+ECommerceProcessingWebHooksSynchronisationDeleted                                                   =The WebHooks synchronization lock has been deleted
 #not used# ECommerceConfirmReset                                                                               =Êtes vous sûre de vouloir purger les données synchronisées liées à ce site ? (<strong>Attention<strong> : cette action est irréversible, toute les données synchronisées seront perdues)
 #not used# ECommerceSetupSaved                                                                                 =La configuration a bien été enregistrée.
 #not used# ECommerceSetupErrorDb                                                                               =Une erreur est survenue lors de l'enregistrement dans la base de données.
@@ -125,7 +129,7 @@ ECommerceResetDolCategorySuccess                                                
 ECommerceResetSynchCategorySuccess                                                                  =category synchronization references have been deleted (this number may be higher than the one indicated when including the children of deleted references).
 ECommerceSyncheCommerceCategoryUpdateError                                                          =Error updating a category.
 ECommerceSyncheCommerceCategoryCreateError                                                          =Erreur lors de la création d'une catégorie.
-ECommerceSynchronizeCategoryProduct                                                                 =Error when creating a category.
+ECommerceSynchronizeCategoryProduct                                                                 =Synchronize product categories
 ECommerceSynchCategoryError                                                                         =Erreur lors de la synchronisation des catégories.
 ECommerceSynchCategorySuccess                                                                       =Error synchronizing categories.
 ECommerceSynchCategoryNoImportRoot                                                                  =Category synchronization has been cancelled because the Dolibarr import category is not defined. Please define it in the synchronization configuration before trying again.
@@ -324,6 +328,8 @@ ECommerceProductImageSyncDirection                                              
 ECommerceProductImageSyncDirectionDescription                                                       =This parameter determines the direction in which images are updated.
 ECommerceProductRefSyncDirection                                                                    =Reference synchronization
 ECommerceProductRefSyncDirectionDescription                                                         =This parameter determines the direction in which the reference is updated.
+ECommerceProductPriceSyncDirection                                                                  =Price (and discount) synchronization
+ECommerceProductPriceSyncDirectionDescription                                                       =This parameter determines the direction in which the price (and discount) is updated.
 ECommerceProductDescriptionSyncDirection                                                            =Description synchronization
 ECommerceProductDescriptionSyncDirectionDescription                                                 =This parameter determines the direction in which the description is updated.
 ECommerceProductShortDescriptionSyncDirection                                                       =Short description synchronization
@@ -347,6 +353,9 @@ ECommerceImportProductsPrices                                                   
 
 EcommerceNGUnlinkToECommerce                                                                        =Remove product from E-Commerce site
 EcommerceNGConfirmUnlinkToECommerce                                                                 =Are you sure you want to remove this product from the e-commerce site?
+EcommerceNGUnlinkOrderToECommerce                                                                   =Unlink order from E-Commerce site
+EcommerceNGConfirmUnlinkOrderToECommerce                                                            =Are you sure you want to unlink this order from the e-commerce site?
+EcommerceNGOrderUnlinked                                                                            =The order has been unlinked from the e-commerce site
 ECommerceResetCategoriesProductSuccess                                                              =Product categories have been removed.
 
 EcommerceUpdateCompanyFromECommerce                                                                 =Update from the E-Commerce site
@@ -599,7 +608,11 @@ ECommerceWoocommerceGetAllWoocommerceRemoteShippingModes               =Error re
 ECommerceWoocommerceGetAllWoocommerceRemoteShippingZoneMethods         =Erreur de récupération des données des modes de transport distants sur le site '%s' et la zone (ID distant : %s):
 
 ECommerceWoocommerceStatusProductSupported                           = Supported statuses
-ECommerceWoocommerceStatusProductSupportedDescription                = List of supported statuses for synchronization. (empty for all statuses; list of values ​​separated by commas)<br>Only values ​​returned by the API are supported. ex: draft, pending, private, publish, ...
+ECommerceWoocommerceStatusProductSupportedDescription                = List of supported statuses for synchronization. (empty for all statuses; list of values separated by commas)<br>Only values returned by the API are supported. ex: draft, pending, private, publish, ...
+ECommerceWoocommerceProductManageBackorders                          = Activé la gestion de "État du stock" du produit sur WooCommerce
+ECommerceWoocommerceProductManageBackordersDescription               = Force la valeur de "État du stock" sur WooCommerce dans "Inventaire" du produit en fonction que le produit soit en achat ou non dans dolibarr.
+ECommerceWoocommerceProductBackordersIfPurchasable                   = Gérer les ventes de produits
+ECommerceWoocommerceProductBackordersIfPurchasableDescription        = Paramétrage par défaut si non renseigné sur le produit. Gérer les ventes de produits qui ne sont plus en stock physiquement. La valeur par défaut est 'En stock' si le produit n'est pas en achat.<br>Options:<br> - 'En stock' (Ne pas autoriser) : C'est le réglage par défaut. Si le stock tombe à 0, le produit est marqué comme "Rupture de stock" et le bouton d'achat disparaît.<br> - 'Victime de son succès, retour bientôt !' (Autoriser, mais informer le client) : Le client peut toujours acheter le produit, mais un message s'affiche sur la page produit (et dans le panier) pour lui dire : "Disponible sur commande". Cela évite les frustrations liées aux délais de livraison imprévus.<br> - 'En réapprovisionnement' (Autoriser sans notification) : Le produit reste achetable normalement, même avec un stock négatif. Pour le client, c'est comme si le produit était toujours en rayon.
 
 ECommercengWoocommerceStatus                                         =Status for site [%s]
 ECommercengWoocommerceDescription                                    =Store description
@@ -608,6 +621,11 @@ ECommercengWoocommerceOnlinePayment                                  =Online pay
 ECommercengWoocommerceTaxClass                                       =VAT class for site [%s]
 ECommercengWoocommerceManageStock                                    =Stock management for the site [%s]
 ECommercengWoocommerceDontUpdateStock                                =Do not update stock with site [%s]
+ECommercengWoocommerceProductBackOrders                              =État du stock pour le site [%s]
+ECommercengWoocommerceProductBackOrdersHelp                          =Contrôle si le produit est listé comme « en stock » ou « en rupture » sur le site.
+ECommercengWoocommerceProductBackOrdersNo                            =En stock
+ECommercengWoocommerceProductBackOrdersNotify                        =Victime de son succès, retour bientôt !
+ECommercengWoocommerceProductBackOrdersYes                           =En réapprovisionnement
 
 ECommercengWoocommerceDictAttribute                                  =List of attributes on Woocommerce
 ECommercengWoocommerceDictAttributesUpdated                          =Attributes dictionary since Woocommerce update.
@@ -621,7 +639,7 @@ ECommerceWoocommerceErrorDisableDictTaxClass                         =Error deac
 ECommerceWoocommerceErrorAddDictTaxClass                             =Error adding a VAT class, code: "%s", name: "%s", error: "%s"
 ECommerceWoocommerceErrorUpdateDictTaxClass                          =Error updating a VAT class, code: "%s", error: "%s"
 
-ECommercengWoocommerceDictLang                                       =List of languages ​​on Woocommerce
+ECommercengWoocommerceDictLang                                       =List of languages on Woocommerce
 
 ECommercengWoocommerceDictTaxRate                                    =List of VAT rates on Woocommerce
 ECommerceWoocommerceErrorDisableDictTaxRate                          =Error deactivating a VAT rate, ID: "%s", error: "%s"
@@ -668,7 +686,7 @@ ECommercengWoocommerceExtrafieldsMetaData                            = Woocommer
 ECommercengWoocommerceExtrafieldsAttribute                           = WooCommerce attribute
 ECommercengWoocommerceExtrafieldsOptionsDefaultValueDescription      = Default value of the additional attribute (If empty the one defined in its configuration)
 ECommercengWoocommerceExtrafieldsOptionsMetaDataDescription          = Enter the name of the metadata corresponding to this additional attribute
-ECommercengWoocommerceExtrafieldsOptionsAttributeDescription         = The values ​​of the Dolibarr complementary field must be in the form "Name, Name" example: "Yellow, Yellow"
+ECommercengWoocommerceExtrafieldsOptionsAttributeDescription         = The values of the Dolibarr complementary field must be in the form "Name, Name" example: "Yellow, Yellow"
 
 ECommerceWoocommerceCreateRemoteCategoryParentNotCreated             = Error for site '%s' when searching for parent ID of category '%s' (slug: '%s')
 ECommerceWoocommerceCreateRemoteBatchCategories                      = Error creating categories in batch on site '%s':
@@ -690,6 +708,7 @@ ECommerceWoocommerceProductVariationOneToOne                         = One => on
 ECommerceWoocommerceProductVariationAllToOne                         = All => one
 ECommerceWoocommerceProductVariationModeDescription                  = Choose how we synchronize the variations<br>'One => one' will create a product for each variation of the WooCommerce product<br>'All => one' will create one product and only one for the varying product with the parent information and the meta-data of the first variation
 
+DisabledBecauseOfCustomMode                                          = Disabled (%s mode active)
 ECommercengWoocommerceRegularPrice                                   = Regular price for site [%s]
 ECommercengWoocommerceSalePrice                                      = Promotional price for the site [%s]
 ECommercengWoocommerceDateOnSaleFrom                                 = Promotion start date for site [%s]
@@ -706,7 +725,7 @@ ECommercengWoocommerceCompanyRole_shop_manager                       = Store man
 ECommercengWoocommerceCompanyRole_                                   = No role on this site
 
 ECommerceWoocommerceCustomerRolesSupported                           = Supported user roles
-ECommerceWoocommerceCustomerRolesSupportedDescription                = User role supported for synchronization. (empty for all roles)<br>Only values ​​returned by the API are supported. ex: customer, administrator, author, contributor, editor, subscriber, shop_manager, ...<br>Only users of the defined role will be processed<br>Only guest orders or whose customer is synchronized will be processed
+ECommerceWoocommerceCustomerRolesSupportedDescription                = User role supported for synchronization. (empty for all roles)<br>Only values returned by the API are supported. ex: customer, administrator, author, contributor, editor, subscriber, shop_manager, ...<br>Only users of the defined role will be processed<br>Only guest orders or whose customer is synchronized will be processed
 
 ECommerceWooCommerceBundleComposite                                  =Composition of the kit:
 
@@ -725,7 +744,7 @@ ECommerceWooCommerceErrorDontSupportMultiTaxes                       = The modul
 ECommerceWoocommerceErrorGetWoocommerceWebHooks                      = Error retrieving web hooks on site '%s':
 ECommerceWoocommerceErrorTaxClassNotFoundFromTaxRate                 = Tax '%s' not found in tax dictionary of WooSync module for site '%s' for product '%s'
 ECommerceWoocommerceErrorGetOrderData                                = Error retrieving data from remote command '%s' from site '%s'
-ECommerceWooCommerceErrorLanguageMatchNotFound                       = The language match for code '%s' and site ID '%s' was not found in the dictionary 'List of languages ​​on Woocommerce'
+ECommerceWooCommerceErrorLanguageMatchNotFound                       = The language match for code '%s' and site ID '%s' was not found in the dictionary 'List of languages on Woocommerce'
 
 ECommerceWoocommerceGetRemoteProduct                                 = Retrieving the remote product (remote ID: %s) from site '%s'
 ECommerceErrorWarehouseIdNotSpecifiedForTheLine                      = The remote warehouse was not found for product line %s
@@ -737,6 +756,7 @@ ECommerceErrorGetImportKeyOfLine                                     = Error ret
 ECommerceWooCommerceStoreCredit                                      = Shop Credit
 
 ECommerceLinks                                                       = ID sur les boutiques
+ECommerceForceUpdate                                                 = Forcer la synchronisation même s'il est déjà à jour (Seulement pour les Produits et Tiers/Contacts)
 
 #######################################################################
 # API
@@ -805,6 +825,7 @@ ECommerceErrorValidOrder                                                        
 ECommerceErrorSetStatusOrderValidated                                                               =Error passing the order to 'Validated'
 ECommerceErrorSetStatusOrderShipmentOnProcess                                                       =Error changing command to 'In Progress'
 ECommerceErrorCancelOrder                                                                           =Error changing order to 'Cancelled'
+ECommerceErrorReopenOrder                                                                           =Error while reopening the cancelled order
 ECommerceErrorCloseOrder                                                                            =Error changing order to 'Delivered'
 ECommerceErrorClassifyOrderBilled                                                                   =Error changing order to 'Processed'
 ECommerceErrorPaymentGatewaysNotFound                                                               =Payment method (%s, %s) was not found in those synchronized
@@ -879,6 +900,10 @@ ECommerceErrorWhenUnlinkProductByProductId                                      
 ECommerceErrorWhenUnlinkProductByRemoteId                                                           =Error removing product link (Site: %s; Remote ID: %s)
 ECommerceErrorWhenUnlinkProduct                                                                     =Error removing product link (Site: %s; ID: %s; Remote ID: %s)
 ECommerceErrorWhenUnlinkProductCategory                                                             =Error deleting category on product (Site: %s; ID: %s; Category ID: %s)
+ECommerceErrorWhenUnlinkOrderByOrderId                                                              =Error removing order link (Site: %s; ID: %s)
+ECommerceErrorWhenUnlinkOrderByRemoteId                                                             =Error removing order link (Site: %s; Remote ID: %s)
+ECommerceErrorWhenUnlinkOrder                                                                       =Error removing order link (Site: %s; ID: %s; Remote ID: %s)
+ECommerceErrorWhenUnlinkOrderRefExt                                                                 =Error resetting the external reference of the order (Site: %s; ID: %s)
 ECommerceErrorUpdateRefProduct                                                                      =Error when changing the product reference '%s' to the new reference '%s' (it already exists)
 ECommerceErrorFetchProductByRef                                                                     =Error loading the product by its reference (Ref: %s)
 ECommerceErrorProductNotFoundByRef                                                                  =The product was not found by its reference (Ref: %s)
@@ -894,6 +919,7 @@ ECommerceErrorConnectAPI                                                        
 ECommerceErrorUpdateThirdPartyLanguage                                                              =Error updating third party language (ID: %s)
 ECommerceErrorDefineBuyPrice                                                                        =Error when updating the price in Dolibarr (ID: %s, Price: %s)
 ECommerceErrorAddLine                                                                               =Error adding a product line
+ECommerceErrorProductRefMismatch                                                                    = Le produit de la commande (ID distant %s, Ref: %s) n'est pas le même ref du produit lié dans dolibarr (ID: %s, Ref: %s)
 
 ############################################################################################
 # Warnings
@@ -904,3 +930,15 @@ ECommerceWarningSynchronizeWebHook                                              
 #not used# ECommerceWarningUpdateOrderNotSynchronized                                                        =Attention!! Attempting to update an order out of sync
 ECommerceWarningNotifyEmailErrorCheckWebHooksStatusNotDefined                                       =Attention!! The global variable ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS (containing email addresses separated by commas) is inactive
 ECommerceWarningNotifyEmailErrorCheckWebHooksVolumetryNotDefined                                    =Attention!! The global variable ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY (containing email addresses separated by commas) is inactive
+ECommerceWarningRemoteObjectsNotFound                                                              =%s '%s' element(s) not found on the remote site
+ECommerceWarningRemoteObjectNotFoundEnriched                                                       =Remote ID %s not found on site (Dolibarr: %s, ID %s)
+ECommerceWarningRemoteObjectNotFound                                                               =Remote ID %s not found on site
+
+## AJAX Sync ##
+ECommerceSynchOnlyLinked=Synchronize only already linked elements
+ECommerceSynchroAjaxProcessing=Processing: page %s, %s record(s) processed...
+ECommerceSynchroAjaxPageResult=Page %s: %s success, %s error(s)
+ECommerceSynchroAjaxFinished=Synchronization completed: %s success, %s error(s)
+ECommerceSynchroAjaxAborted=Synchronization cancelled by user
+ECommerceSynchroAjaxNetworkError=Network error, retrying...
+ECommerceSynchroAjaxSessionExpired=Session expired, please reconnect

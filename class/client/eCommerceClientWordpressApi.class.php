@@ -21,6 +21,7 @@
  *      \brief      This file for managing Client Wordpress API
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/client/eCommerceClientApi.class.php');
 use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
@@ -99,10 +100,7 @@ class eCommerceClientWordpressApi extends eCommerceClientApi
 			// Add the retry middleware to the handler stack
 			$stack->push($retryMiddleware);
 
-			$userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)';
-			if (!empty($conf->global->ECOMMERCE_USER_AGENT)) {
-				$userAgent = $conf->global->ECOMMERCE_USER_AGENT;
-			}
+			$userAgent = ecommercengGetGlobalString('ECOMMERCE_USER_AGENT') ?: 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)';
 			$options = [
 				// Base URI is used with relative requests
 				'base_uri' => $this->api_url,
@@ -112,7 +110,7 @@ class eCommerceClientWordpressApi extends eCommerceClientApi
 				'headers' => array('User-Agent' => $userAgent),
 				'handler' => $stack,
 			];
-			if (!empty($conf->global->ECOMMERCENG_WORDPRESS_NO_VERIFY_SSL)) $options['verify'] = false;
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_WORDPRESS_NO_VERIFY_SSL'))) $options['verify'] = false;
 
 			$this->client = new Client($options);
 		} catch (Exception $e) {
@@ -230,9 +228,10 @@ class eCommerceClientWordpressApi extends eCommerceClientApi
 	 * @param   bool  	$without_prefix						Without api url prefix
 	 * @param   int  	$status_code						Status code returned
 	 * @param   int  	$error_info							Error info returned
+	 * @param   array  	$response_headers					Response headers returned
 	 * @return	array                 						null if KO otherwise result data
 	 */
-	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null)
+	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null, &$response_headers = null)
 	{
 		global $conf;
 		dol_syslog(__METHOD__ . " method=" . $method . " url=" . $url . " options=" . json_encode($options), LOG_DEBUG);
@@ -249,6 +248,6 @@ class eCommerceClientWordpressApi extends eCommerceClientApi
 			}
 		}
 
-		return parent::sendToApi($method, $url, $options, $without_prefix, $status_code, $error_info);
+		return parent::sendToApi($method, $url, $options, $without_prefix, $status_code, $error_info, $response_headers);
 	}
 }

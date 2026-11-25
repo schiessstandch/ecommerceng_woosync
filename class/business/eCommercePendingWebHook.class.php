@@ -21,6 +21,7 @@
  * \brief
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/business/eCommerceUtils.class.php');
 
 /**
@@ -558,7 +559,7 @@ class eCommercePendingWebHook
 		try {
 			$error = 0;
 
-			if (empty($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION)) {
+			if (empty(ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION'))) {
 				dolibarr_set_const($this->db, 'ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION', dol_print_date(dol_now(), 'dayhour'), 'chaine', 1, 'Token the processing of the synchronization of the site by webhooks', 0);
 
 				// Archive successful pending lines before x days into a file
@@ -577,7 +578,7 @@ class eCommercePendingWebHook
 					$sql .= " WHERE epw.status IN (" . self::STATUS_NOT_PROCESSED . ")";
 					$sql .= " AND epw.webhook_resource = '" . $this->db->escape($resource) . "'";
 					//$sql .= " AND es.entity IN (" . getEntity('ecommerceng') . ")";
-					$sql .= " ORDER BY epw.webhook_topic DESC, epw.rowid DESC";
+					$sql .= " ORDER BY epw.webhook_resource ASC, epw.webhook_event ASC, epw.rowid DESC";
 
 					$resql = $this->db->query($sql);
 					if (!$resql) {
@@ -617,7 +618,7 @@ class eCommercePendingWebHook
 					$output .= $langs->trans('ECommerceSynchronizeWebHooksSuccess');
 				}
 			} else {
-				$output .= $langs->trans('ECommerceAlreadyProcessingWebHooksSynchronization') . ' (' . $langs->trans('ECommerceSince') . ' : ' . $conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION . ')';
+				$output .= $langs->trans('ECommerceAlreadyProcessingWebHooksSynchronization') . ' (' . $langs->trans('ECommerceSince') . ' : ' . ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION') . ')';
 			}
 
 			$this->error = "";
@@ -691,11 +692,11 @@ class eCommercePendingWebHook
 			}
 
 			if ($error) {
-				if (!empty($conf->global->ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS)) {
+				if (!empty(ecommercengGetGlobalString('ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS'))) {
 					$output2 = $langs->trans('ECommerceSendEmailErrorCheckWebHooksStatus') . ":<br>";
 					$subject = $langs->transnoentitiesnoconv('ECommerceNotifyEmailCheckWebHooksStatusErrorSubject');
-					$send_to = $conf->global->ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS;
-					$from = $conf->global->MAIN_MAIL_EMAIL_FROM;
+					$send_to = ecommercengGetGlobalString('ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS');
+					$from = ecommercengGetGlobalString('MAIN_MAIL_EMAIL_FROM');
 					$body = $output;
 					$result = $this->_sendEmail($subject, $send_to, $from, $body);
 					if (is_numeric($result) && $result < 0) {
@@ -776,11 +777,11 @@ class eCommercePendingWebHook
 		}
 
 		if ($error) {
-			if (!empty($conf->global->ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY)) {
+			if (!empty(ecommercengGetGlobalString('ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY'))) {
 				$output2 = $langs->trans('ECommerceSendEmailErrorCheckWebHooksVolumetry') . ":<br>";
 				$subject = $langs->transnoentitiesnoconv('ECommerceSendEmailErrorCheckWebHooksVolumetryErrorSubject');
-				$send_to = $conf->global->ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY;
-				$from = $conf->global->MAIN_MAIL_EMAIL_FROM;
+				$send_to = ecommercengGetGlobalString('ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY');
+				$from = ecommercengGetGlobalString('MAIN_MAIL_EMAIL_FROM');
 				$body = $output;
 				$result = $this->_sendEmail($subject, $send_to, $from, $body);
 				if (is_numeric($result) && $result < 0) {
@@ -978,7 +979,7 @@ class eCommercePendingWebHook
 
 		require_once DOL_DOCUMENT_ROOT . '/core/lib/date.lib.php';
 		$error = 0;
-		$period = !empty($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_LOGS_BEFORE_X_DAYS) ? abs($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_LOGS_BEFORE_X_DAYS) : 7;
+		$period = abs(ecommercengGetGlobalInt('ECOMMERCE_PROCESSING_WEBHOOK_LOGS_BEFORE_X_DAYS', 7));
 		$log_before_date = dol_time_plus_duree(dol_now(), -$period, 'd');
 
 		$sql = "SELECT epw.rowid, epw.datec, epw.site_id, epw.delivery_id, epw.webhook_id, epw.webhook_topic, epw.webhook_resource" .
@@ -997,8 +998,8 @@ class eCommercePendingWebHook
 			$this->errors = array();
 			dol_syslog(__METHOD__ . " SQL: " . $sql . "; Error: " . $this->db->lasterror(), LOG_ERR);
 		} elseif ($this->db->num_rows($resql) > 0) {
-			if (empty($conf->global->SYSLOG_FILE)) $logfile = DOL_DATA_ROOT . '/woosync_webhooks_' . $conf->entity . '.v2.log';
-			else $logfile = dirname(str_replace('DOL_DATA_ROOT', DOL_DATA_ROOT, $conf->global->SYSLOG_FILE)) . "/woosync_webhooks_" . $conf->entity . ".v2.log";
+			if (empty(ecommercengGetGlobalString('SYSLOG_FILE'))) $logfile = DOL_DATA_ROOT . '/woosync_webhooks_' . $conf->entity . '.v2.log';
+			else $logfile = dirname(str_replace('DOL_DATA_ROOT', DOL_DATA_ROOT, ecommercengGetGlobalString('SYSLOG_FILE'))) . "/woosync_webhooks_" . $conf->entity . ".v2.log";
 
 			// Open/create log file
 			$filefd = @fopen($logfile, 'a+');
@@ -1010,8 +1011,8 @@ class eCommercePendingWebHook
 			} else {
 				while ($obj = $this->db->fetch_object($resql)) {
 					$data = array(
-						0 => dol_print_date($obj->datep, 'standard'),
-						1 => dol_print_date($obj->datec, 'standard'),
+						0 => dol_print_date($this->db->jdate($obj->datep), 'standard'),
+						1 => dol_print_date($this->db->jdate($obj->datec), 'standard'),
 						2 => $obj->site_id,
 						3 => $obj->delivery_id,
 						4 => $obj->webhook_id,
@@ -1043,7 +1044,7 @@ class eCommercePendingWebHook
 				}
 
 				fclose($filefd);
-				@chmod($logfile, octdec(empty($conf->global->MAIN_UMASK) ? '0664' : $conf->global->MAIN_UMASK));
+				@chmod($logfile, octdec(ecommercengGetGlobalString('MAIN_UMASK') ?: '0664'));
 			}
 
 			$this->db->free($resql);

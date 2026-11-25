@@ -22,6 +22,7 @@
  */
 
 include_once DOL_DOCUMENT_ROOT.'/core/boxes/modules_boxes.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 
 
 /**
@@ -57,7 +58,7 @@ class box_ecommerce_webhooks extends ModeleBoxes
 
 		$this->db = $db;
 
-		$this->hidden = !($user->rights->ecommerceng->read && empty($user->socid));
+		$this->hidden = !(ecommercengUserHasRight($user, 'ecommerceng', 'read') && empty($user->socid));
 	}
 
 	/**
@@ -79,7 +80,7 @@ class box_ecommerce_webhooks extends ModeleBoxes
 
 		$this->info_box_head = array('text' => $langs->trans("ECommerceBoxWebHooks"));
 
-		if ($user->rights->ecommerceng->read) {
+		if (ecommercengUserHasRight($user, 'ecommerceng', 'read')) {
 			$sql = "SELECT epw.status, count(*) AS nb";
 			$sql .= " FROM " . MAIN_DB_PREFIX . "ecommerce_pending_webhooks AS epw";
 			$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = epw.site_id";

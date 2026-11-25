@@ -203,8 +203,8 @@ class eCommerceProduct // extends CommonObject
 		$sql .= " fk_site=" . (isset($this->fk_site) ? intval($this->fk_site) : 0) . ",";
 		$sql .= " remote_id='" . $this->db->escape($this->remote_id) . "',";
 		$sql .= " lang=" . (!empty($this->lang) ? "'" . $this->db->escape($this->lang) . "'" : 'null') . ",";
-		$sql .= " last_update=" . (isset($this->last_update) ? "'" . $this->last_update . "'" : 'null') . ",";
-		$sql .= " last_update_stock=" . (isset($this->last_update_stock) ? "'" . $this->last_update_stock . "'" : 'null') . ",";
+		$sql .= " last_update=" . (isset($this->last_update) ? $this->db->ifsql("'" . $this->last_update . "' > last_update", "'" . $this->last_update . "'", 'last_update') : 'null') . ",";
+		$sql .= " last_update_stock=" . (isset($this->last_update_stock) ? $this->db->ifsql("'" . $this->last_update_stock . "' > last_update", "'" . $this->last_update_stock . "'", 'last_update') : 'null') . ",";
 		$sql .= " other_data=" . (!empty($this->other_data) ? "'" . $this->db->escape(json_encode($this->other_data)) . "'" : "NULL") . "";
 
 		$sql .= " WHERE rowid=" . $this->id;
@@ -473,5 +473,32 @@ class eCommerceProduct // extends CommonObject
 	public function errorsToString($separator = ', ')
 	{
 		return $this->error . (is_array($this->errors) ? (!empty($this->error) ? $separator : '') . join($separator, $this->errors) : '');
+	}
+
+	/**
+	 * Get all remote_id linked to a site
+	 *
+	 * @param  int          $siteId     Site ID
+	 * @return array|int                Array of remote_id or -1 if error
+	 */
+	public function getAllRemoteIds($siteId)
+	{
+		$sql = "SELECT remote_id FROM " . MAIN_DB_PREFIX . "ecommerce_product";
+		$sql .= " WHERE fk_site = " . intval($siteId);
+		dol_syslog(get_class($this) . "::getAllRemoteIds sql=" . $sql, LOG_DEBUG);
+		$resql = $this->db->query($sql);
+
+		if ($resql) {
+			$idsArray = array();
+			while ($obj = $this->db->fetch_object($resql)) {
+				$idsArray[] = $obj->remote_id;
+			}
+			$this->db->free($resql);
+			return $idsArray;
+		} else {
+			$this->error = "Error " . $this->db->lasterror();
+			dol_syslog(get_class($this) . "::getAllRemoteIds " . $this->error, LOG_ERR);
+			return -1;
+		}
 	}
 }

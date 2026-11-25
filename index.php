@@ -24,6 +24,7 @@ if (! $res && file_exists("../main.inc.php")) $res=@include '../main.inc.php';		
 if (! $res && file_exists("../../main.inc.php")) $res=@include '../../main.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
+dol_include_once("/ecommerceng/lib/compatibility.lib.php");
 dol_include_once("/ecommerceng/class/data/eCommerceSite.class.php");
 
 $langs->load("admin");
@@ -39,7 +40,7 @@ $langs->load("ecommerce@ecommerceng");
 ****************************************************/
 //CHECK ACCESS
 // Protection if external user
-if ((isset($user->socid) && $user->socid > 0) || empty($user->rights->ecommerceng->read))
+if ((isset($user->socid) && $user->socid > 0) || empty(ecommercengUserHasRight($user, 'ecommerceng', 'read')))
 {
 	accessforbidden();
 }

@@ -167,11 +167,12 @@ class eCommerceRemoteAccess
 	 * @param	int		$to_date		Synchronize to date
 	 * @param   array   $remoteObject   Array of remote object
 	 * @param   int     $toNb           Max nb
+	 * @param   int     $page           Page number (0 = all pages, >0 = single page mode)
 	 * @return $dolibarrObject array
 	 */
-	public function convertRemoteObjectIntoDolibarrSociete($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrSociete($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page = 0)
 	{
-		$result = $this->class->convertRemoteObjectIntoDolibarrSociete($from_date, $to_date, $remoteObject, $toNb);
+		$result = $this->class->convertRemoteObjectIntoDolibarrSociete($from_date, $to_date, $remoteObject, $toNb, $page);
 		$this->error = $this->class->error;
 		$this->errors = $this->class->errors;
 		return $result;
@@ -201,9 +202,9 @@ class eCommerceRemoteAccess
 	 * @param   int     $toNb           Max nb
 	 * @return $dolibarrObject array
 	 */
-	public function convertRemoteObjectIntoDolibarrProduct($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrProduct($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page = 0)
 	{
-		$result = $this->class->convertRemoteObjectIntoDolibarrProduct($from_date, $to_date, $remoteObject, $toNb);
+		$result = $this->class->convertRemoteObjectIntoDolibarrProduct($from_date, $to_date, $remoteObject, $toNb, $page);
 		$this->error = $this->class->error;
 		$this->errors = $this->class->errors;
 		return $result;
@@ -232,9 +233,9 @@ class eCommerceRemoteAccess
 	 * @param   int     $toNb           Max nb
 	 * @return $dolibarrObject array
 	 */
-	public function convertRemoteObjectIntoDolibarrCommande($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrCommande($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page = 0)
 	{
-		$result = $this->class->convertRemoteObjectIntoDolibarrCommande($from_date, $to_date, $remoteObject, $toNb);
+		$result = $this->class->convertRemoteObjectIntoDolibarrCommande($from_date, $to_date, $remoteObject, $toNb, $page);
 		$this->error = $this->class->error;
 		$this->errors = $this->class->errors;
 		return $result;
@@ -358,7 +359,7 @@ class eCommerceRemoteAccess
 	 *
 	 * @param  int     $remote_product_id    Id of product on remote ecommerce
 	 * @param  Product $object               Product object
-	 * @return bool
+	 * @return  boolean|array                false or ['date_last_update' => xxx]
 	 */
 	public function updateRemoteProduct($remote_product_id, $object)
 	{
@@ -463,7 +464,7 @@ class eCommerceRemoteAccess
 	 * Create a remote product
 	 *
 	 * @param Object    $object              Object product
-	 * @return bool
+	 * @return bool|array
 	 */
 	public function createRemoteProduct($object)
 	{

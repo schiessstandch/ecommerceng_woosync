@@ -498,6 +498,10 @@ ECommerceWoocommerceCreateRemoteProductSendImage=Errore durante l'invio di un'im
 
 ECommerceWoocommerceStatusProductSupported                           = Statuts supportés
 ECommerceWoocommerceStatusProductSupportedDescription                = Liste des statuts supportés pour la synchronisation.(vide pour tous les statuts; liste de valeurs séparées par des virgules)<br>Seules les valeurs retournées par l'API sont supportées. ex: draft, pending, private, publish, ...
+ECommerceWoocommerceProductManageBackorders                          = Activé la gestion de "État du stock" du produit sur WooCommerce
+ECommerceWoocommerceProductManageBackordersDescription               = Force la valeur de "État du stock" sur WooCommerce dans "Inventaire" du produit en fonction que le produit soit en achat ou non dans dolibarr.
+ECommerceWoocommerceProductBackordersIfPurchasable                   = Gérer les ventes de produits
+ECommerceWoocommerceProductBackordersIfPurchasableDescription        = Paramétrage par défaut si non renseigné sur le produit. Gérer les ventes de produits qui ne sont plus en stock physiquement. La valeur par défaut est 'En stock' si le produit n'est pas en achat.<br>Options:<br> - 'En stock' (Ne pas autoriser) : C'est le réglage par défaut. Si le stock tombe à 0, le produit est marqué comme "Rupture de stock" et le bouton d'achat disparaît.<br> - 'Victime de son succès, retour bientôt !' (Autoriser, mais informer le client) : Le client peut toujours acheter le produit, mais un message s'affiche sur la page produit (et dans le panier) pour lui dire : "Disponible sur commande". Cela évite les frustrations liées aux délais de livraison imprévus.<br> - 'En réapprovisionnement' (Autoriser sans notification) : Le produit reste achetable normalement, même avec un stock négatif. Pour le client, c'est comme si le produit était toujours en rayon.
 
 ECommercengWoocommerceStatus=Stato per lo shop [%s]
 ECommercengWoocommerceDescription=Descrizione lunga shop
@@ -562,6 +566,7 @@ ECommercengWoocommerceCompanyRole_editor        = Editore
 ECommercengWoocommerceCompanyRole_subscriber    = Sottoscrittore
 ECommercengWoocommerceCompanyRole_shop_manager  = Gestore negozio
 ECommercengWoocommerceCompanyRole_              = Nessun ruolo su questo shop
+ECommerceForceUpdate                                                 = Forcer la synchronisation même s'il est déjà à jour (Seulement pour les Produits et Tiers/Contacts)
 
 ############################################################################################
 # Errors
@@ -686,6 +691,7 @@ ECommerceErrorUpdateRefProduct                      = Erreur lors de la modifica
 ECommerceErrorFetchProductByRef                     = Erreur lors du chargement du produit par sa reference (Ref: %s)
 ECommerceErrorProductNotFoundByRef                  = Le produit n'as pas été trouvé par sa reference (Ref: %s)
 ECommerceErrorProductRefMandatory2                  = Le produit "%s" n'as de reference sur le site
+ECommerceErrorProductRefMismatch                                                                    = Le produit de la commande (ID distant %s, Ref: %s) n'est pas le même ref du produit lié dans dolibarr (ID: %s, Ref: %s)
 
 ############################################################################################
 # Warnings

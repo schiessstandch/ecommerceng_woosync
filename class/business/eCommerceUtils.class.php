@@ -20,6 +20,7 @@
  * File of class with method used by scheduled job to launch automatic synchronization
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
@@ -76,6 +77,7 @@ class eCommerceUtils
 		$output = '';
 
 		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__);
+		$isV20p = version_compare(DOL_VERSION, "20.0.0") >= 0;
 
 		$eCommerceSite = new eCommerceSite($this->db);
 		$sites = $eCommerceSite->listSites('object');
@@ -117,11 +119,11 @@ class eCommerceUtils
 					$sql .= ", COALESCE(sv.max_date, '1971-01-01')";
 				}
 				// Supplier order
-				if ((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled)) {
+				if ((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled)) {
 					$sql .= ", COALESCE(sov.max_date, '1971-01-01')";
 				}
 				// Delivery order
-				if (((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
+				if (((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
 					$sql .= ", COALESCE(dov.max_date, '1971-01-01')";
 				}
 				// Mrp
@@ -154,13 +156,13 @@ class eCommerceUtils
 					$sql .= "   SELECT cd.fk_product, GREATEST(MAX(e.tms), COALESCE(MAX(c.tms), '1971-01-01')) AS max_date";
 					$sql .= "   FROM " . MAIN_DB_PREFIX . "expeditiondet AS ed";
 					$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "expedition AS e ON e.rowid = ed.fk_expedition";
-					$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commandedet AS cd ON cd.rowid = ed.fk_origin_line";
+					$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commandedet AS cd ON cd.rowid = ed." . ($isV20p ? 'fk_elementdet' : 'fk_origin_line');
 					$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commande AS c ON c.rowid = cd.fk_commande";
 					$sql .= "   GROUP BY cd.fk_product";
 					$sql .= ") AS sv ON sv.fk_product = ep.fk_product";
 				}
 				// Supplier order
-				if ((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled)) {
+				if ((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled)) {
 					$sql .= " LEFT JOIN (";
 					$sql .= "   SELECT cfd.fk_product, MAX(cf.tms) AS max_date";
 					$sql .= "   FROM " . MAIN_DB_PREFIX . "commande_fournisseurdet AS cfd";
@@ -169,13 +171,22 @@ class eCommerceUtils
 					$sql .= ") AS sov ON sov.fk_product = ep.fk_product";
 				}
 				// Delivery order
-				if (((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
-					$sql .= " LEFT JOIN (";
-					$sql .= "   SELECT cfd.fk_product, MAX(cf.tms) AS max_date";
-					$sql .= "   FROM " . MAIN_DB_PREFIX . "commande_fournisseur_dispatch AS cfd";
-					$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commande_fournisseur AS cf ON cf.rowid = cfd.fk_commande";
-					$sql .= "   GROUP BY cfd.fk_product";
-					$sql .= ") AS dov ON dov.fk_product = ep.fk_product";
+				if (((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
+					if ($isV20p) {
+						$sql .= " LEFT JOIN (";
+						$sql .= "   SELECT rdb.fk_product, MAX(cf.tms) AS max_date";
+						$sql .= "   FROM " . MAIN_DB_PREFIX . "receptiondet_batch AS rdb";
+						$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commande_fournisseur AS cf ON cf.rowid = rdb.fk_element";
+						$sql .= "   GROUP BY rdb.fk_product";
+						$sql .= ") AS dov ON dov.fk_product = ep.fk_product";
+					} else {
+						$sql .= " LEFT JOIN (";
+						$sql .= "   SELECT cfd.fk_product, MAX(cf.tms) AS max_date";
+						$sql .= "   FROM " . MAIN_DB_PREFIX . "commande_fournisseur_dispatch AS cfd";
+						$sql .= "   LEFT JOIN " . MAIN_DB_PREFIX . "commande_fournisseur AS cf ON cf.rowid = cfd.fk_commande";
+						$sql .= "   GROUP BY cfd.fk_product";
+						$sql .= ") AS dov ON dov.fk_product = ep.fk_product";
+					}
 				}
 				// Mrp
 				if (!empty($conf->mrp->enabled)) {
@@ -198,11 +209,11 @@ class eCommerceUtils
 					$sql .= " OR sv.max_date > ep.last_update_stock";
 				}
 				// Supplier order
-				if ((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled)) {
+				if ((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled)) {
 					$sql .= " OR sov.max_date > ep.last_update_stock";
 				}
 				// Delivery order
-				if (((!empty($conf->fournisseur->enabled) && empty($conf->global->MAIN_USE_NEW_SUPPLIERMOD)) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
+				if (((!empty($conf->fournisseur->enabled) && empty(ecommercengGetGlobalString('MAIN_USE_NEW_SUPPLIERMOD'))) || !empty($conf->supplier_order->enabled) || !empty($conf->supplier_invoice->enabled))) {
 					$sql .= " OR dov.max_date > ep.last_update_stock";
 				}
 				// Mrp
@@ -375,7 +386,7 @@ class eCommerceUtils
 		$stopwatch_id = self::startStopwatch($log_label);
 		$data = self::$chronometer[$stopwatch_id];
 
-		if (!empty($conf->global->ECOMMERCENG_LOG_PROCESSING_TIMES)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_LOG_PROCESSING_TIMES'))) {
 			dol_syslog("Stopwatch " . sprintf("%04d", $stopwatch_id) . " - " . $data['log_label'] . " - Start", LOG_ALERT);
 		}
 
@@ -427,7 +438,7 @@ class eCommerceUtils
 	{
 		global $conf;
 
-		if (isset(self::$chronometer[$stopwatch_id]) && !empty($conf->global->ECOMMERCENG_LOG_PROCESSING_TIMES)) {
+		if (isset(self::$chronometer[$stopwatch_id]) && !empty(ecommercengGetGlobalString('ECOMMERCENG_LOG_PROCESSING_TIMES'))) {
 			$data = self::$chronometer[$stopwatch_id];
 			$elapsed_time = microtime(true) - $data['start_time'];
 

@@ -27,6 +27,7 @@ if (! $res && file_exists("../main.inc.php")) $res=@include '../main.inc.php';		
 if (! $res && file_exists("../../main.inc.php")) $res=@include '../../main.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
 include_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once("/ecommerceng/class/business/eCommercePendingWebHook.class.php");
 dol_include_once("/ecommerceng/class/business/eCommerceSynchro.class.php");
 dol_include_once("/ecommerceng/lib/eCommerce.lib.php");
@@ -39,7 +40,7 @@ $confirm		= GETPOST('confirm', 'alpha');
 $toselect 		= GETPOST('toselect', 'array');
 
 // Security check
-if ($user->socid > 0 || !$user->rights->ecommerceng->read) {
+if ($user->socid > 0 || !ecommercengUserHasRight($user, 'ecommerceng', 'read')) {
 	accessforbidden();
 }
 
@@ -88,7 +89,7 @@ $object = new eCommercePendingWebHook($db);
 $hookmanager->initHooks(array('ecommercewebhookslist'));
 
 $arrayfields = array(
-	'epw.rowid' => array('label' => $langs->trans("TechnicalID"), 'checked' => (!empty($conf->global->MAIN_SHOW_TECHNICAL_ID) ? 1 : 0)),
+	'epw.rowid' => array('label' => $langs->trans("TechnicalID"), 'checked' => (!empty(ecommercengGetGlobalString('MAIN_SHOW_TECHNICAL_ID')) ? 1 : 0)),
 	'es.name' => array('label' => $langs->trans("ECommerceSite"), 'checked' => 1),
 	'epw.delivery_id' => array('label' => $langs->trans("ECommerceDeliveryId"), 'checked' => 0),
 	'epw.webhook_id' => array('label' => $langs->trans("ECommerceWebHookId"), 'checked' => 0),
@@ -147,13 +148,13 @@ if ($object_statut != '') $viewstatut = $object_statut;
 if (empty($reshook)) {
 	$objectclass = 'eCommercePendingWebHook';
 	$objectlabel = 'ECommerceWebHooks';
-	$permtoread = $user->rights->ecommerceng->read;
-	$permtodelete = $user->rights->ecommerceng->write;
-	$permtoclose = $user->rights->ecommerceng->write;
+	$permtoread = ecommercengUserHasRight($user, 'ecommerceng', 'read');
+	$permtodelete = ecommercengUserHasRight($user, 'ecommerceng', 'write');
+	$permtoclose = ecommercengUserHasRight($user, 'ecommerceng', 'write');
 	$uploaddir = $conf->ecommerceng->multidir_output[$conf->entity];
 	include DOL_DOCUMENT_ROOT . '/core/actions_massactions.inc.php';
 
-	if (!$error && ($massaction == 'confirm_set_to_process' || ($action == 'confirm_set_to_process' && $confirm == 'yes')) && $user->rights->ecommerceng->write) {
+	if (!$error && ($massaction == 'confirm_set_to_process' || ($action == 'confirm_set_to_process' && $confirm == 'yes')) && ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 		$nbok = 0;
 		foreach ($toselect as $toselectid) {
 			$result = $object->setStatusToProcess($toselectid);
@@ -169,7 +170,7 @@ if (empty($reshook)) {
 			if ($nbok > 1) setEventMessages($langs->trans("RecordsModified", $nbok), null, 'mesgs');
 			else setEventMessages($langs->trans("RecordModified", $nbok), null, 'mesgs');
 		}
-	} elseif (!$error && ($massaction == 'confirm_set_processed' || ($action == 'confirm_set_processed' && $confirm == 'yes')) && $user->rights->ecommerceng->write) {
+	} elseif (!$error && ($massaction == 'confirm_set_processed' || ($action == 'confirm_set_processed' && $confirm == 'yes')) && ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 		$nbok = 0;
 		foreach ($toselect as $toselectid) {
 			$result = $object->setStatusProcessed($toselectid);
@@ -236,7 +237,7 @@ $sql.= $db->order($sortfield . ", epw.rowid", $sortorder . "," . $sortorder);
 
 // Count total nb of records
 $nbtotalofrecords = '';
-if (empty($conf->global->MAIN_DISABLE_FULL_SCANLIST)) {
+if (empty(ecommercengGetGlobalString('MAIN_DISABLE_FULL_SCANLIST'))) {
 	$result = $db->query("SELECT COUNT(*) AS nb " . $sql);
 	$nbtotalofrecords = 0;
 	if ($result && $obj = $db->fetch_object($result)) $nbtotalofrecords = $obj->nb;
@@ -284,7 +285,7 @@ if ($resql) {
 
 	// List of mass actions available
 	$arrayofmassactions = array();
-	if ($user->rights->ecommerceng->write) {
+	if (ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 		$arrayofmassactions['pre_set_to_process'] = $langs->trans("ECommerceWebHooksSetToProcess");
 		$arrayofmassactions['pre_set_processed'] = $langs->trans("ECommerceWebHooksSetProcessed");
 	}

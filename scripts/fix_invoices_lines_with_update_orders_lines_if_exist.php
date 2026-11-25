@@ -60,6 +60,7 @@ $res=0;
 if (! $res && file_exists("../../master.inc.php")) $res=@include '../../master.inc.php';			// to work if your module directory is into a subdir of root htdocs directory
 if (! $res && file_exists("../../../master.inc.php")) $res=@include '../../../master.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php';
 require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
@@ -117,7 +118,7 @@ if ($max_sites > 0) {
 		}
 		$user->getrights();
 
-		if (!empty($conf->stock->enabled) && !empty($conf->global->STOCK_CALCULATE_ON_BILL)) {
+		if (!empty($conf->stock->enabled) && !empty(ecommercengGetGlobalString('STOCK_CALCULATE_ON_BILL'))) {
 			print "Error decrement stock on validate invoice but don't support rollback stock before delete all lines of the invoice and re-create all lines.\n";
 			continue;
 		}
@@ -355,7 +356,7 @@ if ($max_sites > 0) {
 							// Get product ID
 							$fk_product = 0;
 							if (!empty($item['id_remote_product'])) {
-								if (empty($conf->global->ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD)) {
+								if (empty(ecommercengGetGlobalString('ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD'))) {
 									$eCommerceProduct = new eCommerceProduct($db);
 									$result = $eCommerceProduct->fetchByRemoteId($item['id_remote_product'], $site->id); // load info of table ecommerce_product
 									if ($result < 0 && !empty($eCommerceProduct->error)) {
@@ -381,7 +382,7 @@ if ($max_sites > 0) {
 											break;  // break on items
 										}
 										$fk_product = $product->id;
-									} elseif (!empty($conf->global->ECOMMERCENG_PRODUCT_REF_MANDATORY)) {
+									} elseif (!empty(ecommercengGetGlobalString('ECOMMERCENG_PRODUCT_REF_MANDATORY'))) {
 										print "\nError: Product reference mandatory for {$item['label']} of order {$order->ref} for remote order {$remote_id}\n";
 										$error++;
 										break;  // break on items

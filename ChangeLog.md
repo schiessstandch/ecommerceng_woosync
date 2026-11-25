@@ -1,5 +1,124 @@
 # ChangeLog
 
+## [14.0.75] - 05-11-2026
+- Correction de la prise en compte du changement du statut lors de la mise à jour du statut d'une commande (cas annulé -> validé)
+
+## [14.0.74] - 05-10-2026
+- Correction de l'option du sens de synchronisation du prix (et promo) des produits
+
+## [14.0.73] - 02-10-2026
+- Ajout de l'option du sens de synchronisation du prix (et promo) des produits
+- Correction des dates enregistrées dans les fichiers d'archive des crochets web
+
+## [14.0.72] - 11-09-2026
+- Ajout du bouton pour délier la commande au site WooCommerce
+- Ajout de l'ID distant sur la fiche et la liste des commandes
+
+## [14.0.71] - 02-09-2026
+- Ajout du support de l'ajout des informations de douanes sur les lignes de produits lors de la creation de la commande et de la facture
+
+## [14.0.70] - 02-09-2026
+- Correction d'une impossibilité de passé du statut 'Annulée' au statut 'Validée', 'En cours' ou 'Terminée'
+
+## [14.0.69] - 17-08-2026
+- Ajout compatibilité V23
+
+## [14.0.68] - 11-08-2026
+- Correction des synchronisations AJAX (la premiere fois) depuis la page du site
+
+## [14.0.67] - 06-07-2026
+- Correction des requêtes SQL de nettoyages des orphelins pour les catégories et produits liés
+
+## [14.0.66] - 23-04-2026
+- Ajout de la gestion de l'état du stock (backorders) par produit via un champ complémentaire avec liste déroulante (En stock, Victime de son succès retour bientôt, En réapprovisionnement)
+- Ajout d'une option pour activer/désactiver la gestion des backorders dans la configuration produit du site
+- Synchronisation bidirectionnelle du champ backorders entre Dolibarr et WooCommerce (le paramétrage global sert de valeur par défaut si non renseigné sur le produit)
+- Factorisation de la création/mise à jour des champs complémentaires dans la méthode createUpdateExtrafieldsForTheSite() appelée dans toutes les pages de configuration admin
+- Correction troncature des données WooCommerce pour éviter les dépassements de colonnes en base (téléphone tronqué à 30 caractères, descriptions et notes tronquées à la limite MEDIUMTEXT)
+
+## [14.0.65] - 22-04-2026
+- Correction mise à jour du champ complémentaire "Role pour le site XXX" sur dolibarr même si l'option "Ne pas mettre à jour le tiers de Dolibarr lorsqu'il existe déja dans dolibarr"
+
+## [14.0.64] - 21-04-2026
+- Synchronisation AJAX des tiers, produits et commandes (WooCommerce -> Dolibarr) page par page pour eviter les timeouts PHP sur les gros volumes
+- Ajout de l'option "Synchroniser uniquement les elements deja lies" pour les tiers, produits et commandes
+- Ajout d'une barre de progression, log par page, bouton annuler et retry reseau automatique
+- Detection des elements distants manquants lors de la synchro avec warnings enrichis (ref Dolibarr et ID)
+- Decoupage des requetes API en chunks pour eviter les erreurs "URL too long" sur les gros volumes de produits et commandes
+- Exposition du header X-WP-Total de l'API WooCommerce via un nouveau parametre &$response_headers dans sendToApi()
+- Detection de la deconnexion client (annulation AJAX) pour arreter le traitement en cours
+- Remplacement des styles inline par des classes CSS Dolibarr et ajout d'un fichier css/synchro.css
+- Fallback sur le bouton submit classique si JS desactive ou constante ECOMMERCENG_DISABLE_AJAX_SYNC active
+
+## [14.0.63] - 08-04-2026
+- Enregistre le code du role dans le champ supplémentaire sur la fiche du tiers au lieu d'une traduction manuelle
+- Ajout de l'option pour forcer la synchronisation des produits et des tiers/contacts dans le script syncronize_to_dolibarr.php
+
+## [14.0.62] - 01-04-2026
+- Ajout du mode personnalisé ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 : la ref produit est stockée dans le champ "name" WooCommerce et le libellé dans la meta-donnée "product_short_description"
+- Désactivation automatique du support WPML et des variations produit lorsque le mode personnalisé est actif
+- Désactivation des options de configuration "Variations" et "WPML" dans l'admin quand le mode personnalisé est actif
+
+## [14.0.61] - 04-03-2026
+- Correction de la synchronisation des stocks avec le plugin "Stock Locations for WooCommerce" (compatibilite SLW v3.0.2+ : gestion du champ quantity vide et cast numerique du stock distant)
+
+## [14.0.60] - 18-02-2026
+- Ajout d'un bouton pour débloquer la synchronisation des WebHooks dans la page de configuration (suppression de la constante ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION en cas d'arrêt anormal de la tâche cron)
+
+## [14.0.59] - 09-02-2026
+- Amélioration page About
+
+## [14.0.58] - 09-02-2026
+- Ajout de l'option "Gérer les ventes de produits" dans la configuration du site, onglet "Produit"
+
+## [14.0.57] - 28-01-2026
+- Correction du support de la propriete stockable_product de la classe Product avec la presence du champ complementaire ecommerceng_stockable_product sur les produits
+
+## [14.0.56] - 10-12-2025
+- Correction du nettoyage de la ref du produit a chaque foit que c'est nécéssaire (elle est maintenant dol_sanitizeFileName(dol_string_nospecial()))
+- Ajout d'une option pour forcer la mise a jour des produits et tiers/contacts depuis la synchro manuelle d'un site
+
+## [14.0.55] - 03-12-2025
+- Correction de la recherche du produit avec sa ref (elle est maintenant dol_sanitizeFileName(dol_string_nospecial()) avant de la chercher)
+
+## [14.0.54] - 16-09-2025
+- Correction de la date de derniere mise a jour du produit lors d'une synchro dolibarr vers woocommerce (garde la date la plus récente)
+
+## [14.0.53] - 16-09-2025
+- Correction de la date de derniere mise a jour du produit lors d'une synchro dolibarr vers woocommerce
+
+## [14.0.52] - 15-09-2025
+- Changement de l'ordre de traitement des crochets web (commandes puis produits, creation puis update, plus recent au plus ancien)
+
+## [14.0.51] - 15-09-2025
+- Changement de l'ordre de traitement des crochets web (commandes puis produits, creation puis update, plus recent au plus ancien)
+
+## [14.0.50] - 15-09-2025
+- Ajout d'un test si la ref du produit dans la commande woocommerce correspond a celle du produit lié trouvé lors de la synchro d'une commande de woocommerce vers dolibarr
+- Correction de la mise a jour de l'enregistrement de la date de mise a jour du lien du produit lors de la synchro de dolibarr vers woocommerce
+- Correction du filtre sur l'id distant dans la liste des tiers
+- Correction d'un bug lors de la réaffectation de la categorie d'un tiers deja synchronisé qui n'était pas nécéssaire
+
+## [14.0.49] - 15-09-2025
+- Reessaye de se connecter aussi dans le cas "Nonce invalide - Le nonce a déjà été utilisé" lors d'un echec d'authentification
+- Décommente une partie du code concernant la synchro du prix avec le niveau de prix d'activé (dolibarr -> site))
+
+## [14.0.48] - 03-09-2025
+- Correction fichier langues anglaise
+- Suppression du repertoire vendor dans le depot git
+
+## [14.0.47] - 26-06-2025
+- Correction compatibilité dolibarr v20+ dans le cas de la mise a jour des stocks de dolibarr vers woocommerce (avec les expeditions)
+
+## [14.0.46] - 11-06-2025
+- Correction mise a jour du prix lors de la creation d'un produit depuis une synchro de woocommerce vers dolibarr (avec le niveau de prix activer et configurer avec le niveau de prix 1)
+
+## [14.0.45] - 30-05-2025
+- Correction compatibilité dolibarr v20+ dans le cas de la mise a jour des stocks de dolibarr vers woocommerce (avec les commandes fournisseurs receptionnées)
+
+## [14.0.44] - 10-04-2025
+- Correction mise a jour du statut de la commande de dolibarr vers woocommerce
+
 ## [14.0.43] - 09-04-2025
 - Correction mise a jour du statut de la commande de dolibarr vers woocommerce
 
@@ -33,7 +152,7 @@
 - Correction de prise en compte du trigger d'affectation d'un tag produit
 
 ## [14.0.33] - 26-02-2025
-- Correction de l'affichage des ID distant sur les listes contacts et produits, compatibilité easya 2024
+- Correction de l'affichage des ID distant sur les listes contacts et produits, compatibilité osden 2024
 
 ## [14.0.32] - 05-02-2025
 - Correction de l'affichage des ID distant sur les listes, compatibilité dolibarr antérieure à v19 (pour la liste des contacts) et v13 (pour la liste des tiers)
@@ -1042,7 +1161,39 @@
 - Initial version.
 
 
-[Non Distribué]: https://github.com/OPEN-DSI/ecommerceng_woosync/compare/14.0.43...HEAD
+[Non Distribué]: https://github.com/OPEN-DSI/ecommerceng_woosync/compare/14.0.75...HEAD
+[14.0.75]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.75
+[14.0.74]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.74
+[14.0.73]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.73
+[14.0.72]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.72
+[14.0.71]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.71
+[14.0.70]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.70
+[14.0.69]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.69
+[14.0.68]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.68
+[14.0.67]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.67
+[14.0.66]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.66
+[14.0.65]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.65
+[14.0.64]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.64
+[14.0.63]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.63
+[14.0.62]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.62
+[14.0.61]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.61
+[14.0.60]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.60
+[14.0.59]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.59
+[14.0.58]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.58
+[14.0.57]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.57
+[14.0.56]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.56
+[14.0.55]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.55
+[14.0.54]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.54
+[14.0.53]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.53
+[14.0.52]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.52
+[14.0.51]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.51
+[14.0.50]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.50
+[14.0.49]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.49
+[14.0.48]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.48
+[14.0.47]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.47
+[14.0.46]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.46
+[14.0.45]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.45
+[14.0.44]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.44
 [14.0.43]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.43
 [14.0.42]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.42
 [14.0.41]: https://github.com/OPEN-DSI/ecommerceng_woosync/commits/14.0.41

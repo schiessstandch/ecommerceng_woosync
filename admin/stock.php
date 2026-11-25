@@ -28,6 +28,7 @@ if (! $res && file_exists("../../../main.inc.php")) $res=@include '../../../main
 if (! $res) die("Include of main fails");
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/class/html.formecommerceng.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceRemoteWarehouses.class.php');
@@ -35,7 +36,7 @@ dol_include_once('/ecommerceng/class/data/eCommerceRemoteShippingZoneMethods.cla
 
 $langs->loadLangs(array("admin", "stocks", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
-if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
+if (!$user->admin && !ecommercengUserHasRight($user, 'ecommerceng', 'site')) accessforbidden();
 
 $id = GETPOST('id', 'int');
 $action = GETPOST('action', 'aZ09');
@@ -82,8 +83,8 @@ if (!empty($object->parameters['enable_warehouse_depending_on_shipping_zone_meth
 	}
 }
 
-$movement_stock_on_validate_order = !empty($conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER) && $conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER == 1;
-$movement_stock_on_validate_invoice = !empty($conf->global->STOCK_CALCULATE_ON_BILL);
+$movement_stock_on_validate_order = ecommercengGetGlobalInt('STOCK_CALCULATE_ON_VALIDATE_ORDER') == 1;
+$movement_stock_on_validate_invoice = !empty(ecommercengGetGlobalString('STOCK_CALCULATE_ON_BILL'));
 
 
 /*
@@ -101,7 +102,8 @@ if ($action == 'set_options') {
 	$object->parameters['fk_warehouse_to_ecommerce'] = $object->stock_sync_direction == 'dolibarr2ecommerce' && empty($object->parameters['enable_warehouse_plugin_support']) ? GETPOST('fk_warehouse_to_ecommerce', 'array') : array();
 	$object->parameters['update_virtual_stock'] = $object->stock_sync_direction == 'dolibarr2ecommerce' && empty($object->parameters['enable_warehouse_plugin_support']) && GETPOST('update_virtual_stock', 'int') ? 1 : 0;
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
@@ -142,7 +144,8 @@ if ($action == 'set_options') {
 		$object->parameters['order_actions']['valid_supplier_invoice_fk_warehouse'] = !empty($object->parameters['order_actions']['create_supplier_invoice']) ? GETPOST('valid_supplier_invoice_fk_warehouse', 'int') : -1;
 		$object->parameters['enable_warehouse_depending_on_shipping_zone_method'] = GETPOST('enable_warehouse_depending_on_shipping_zone_method', 'int') ? 1 : 0;
 
-		$result = $object->update($user);
+		$result = $object->createUpdateExtrafieldsForTheSite();
+		if ($result > 0) $result = $object->update($user);
 
 		if ($result < 0) {
 			setEventMessages($object->error, $object->errors, 'errors');

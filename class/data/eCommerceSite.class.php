@@ -19,6 +19,7 @@
  */
 
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/data/eCommerceSociete.class.php');
 dol_include_once('/ecommerceng/class/business/eCommerceUtils.class.php');
 
@@ -91,10 +92,40 @@ class eCommerceSite // extends CommonObject
 		 $this->db->query($sql);
 		 $sql = "DELETE FROM ".MAIN_DB_PREFIX."ecommerce_category WHERE type = ".Categorie::TYPE_CUSTOMER." AND fk_category NOT IN (select rowid from ".MAIN_DB_PREFIX."categorie)";
 		 $this->db->query($sql);*/
-		$sql = "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_category WHERE fk_category NOT IN (select rowid from " . MAIN_DB_PREFIX . "categorie)";
-		$this->db->query($sql);
-		$sql = "DELETE " . MAIN_DB_PREFIX . "ecommerce_product FROM " . MAIN_DB_PREFIX . "ecommerce_product LEFT JOIN (SELECT DISTINCT p.rowid AS product_id, es.rowid AS site_id FROM " . MAIN_DB_PREFIX . "product AS p LEFT JOIN " . MAIN_DB_PREFIX . "categorie_product AS cp ON cp.fk_product = p.rowid LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.fk_cat_product = cp.fk_categorie WHERE es.rowid IS NOT NULL) AS pl ON pl.product_id = " . MAIN_DB_PREFIX . "ecommerce_product.fk_product AND pl.site_id = " . MAIN_DB_PREFIX . "ecommerce_product.fk_site WHERE pl.product_id IS NULL";
-		$this->db->query($sql);
+		// Build lists of sites and allowed product categories (parent + subcategories) for the current entity
+		$siteIds = array();
+		$parentCatIds = array();
+		$resql = $this->db->query("SELECT rowid, fk_cat_product FROM " . MAIN_DB_PREFIX . "ecommerce_site WHERE entity IN (" . getEntity('ecommerceng') . ")");
+		if ($resql) {
+			while ($obj = $this->db->fetch_object($resql)) {
+				$siteIds[(int) $obj->rowid] = (int) $obj->rowid;
+				if ($obj->fk_cat_product > 0) {
+					$parentCatIds[(int) $obj->fk_cat_product] = (int) $obj->fk_cat_product;
+				}
+			}
+			$this->db->free($resql);
+		}
+		if (!empty($siteIds) && !empty($parentCatIds)) {
+			require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
+			$cat = new Categorie($this->db);
+			$arbo = $cat->get_full_arbo('product', $parentCatIds, 1);
+			$catIds = array();
+			if (is_array($arbo)) {
+				foreach ($arbo as $c) {
+					$catIds[] = (int) $c['id'];
+				}
+			}
+			if (!empty($catIds)) {
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_category WHERE fk_category NOT IN (" . implode(',', $catIds) . ")";
+				$this->db->query($sql);
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_product"
+					. " WHERE NOT EXISTS (SELECT rowid FROM " . MAIN_DB_PREFIX . "categorie_product AS cp"
+					. "   WHERE cp.fk_product = " . MAIN_DB_PREFIX . "ecommerce_product.fk_product"
+					. "   AND cp.fk_categorie IN (" . implode(',', $catIds) . "))"
+					. " AND fk_site IN (" . implode(',', $siteIds) . ")";
+				$this->db->query($sql);
+			}
+		}
 		$sql = "DELETE " . MAIN_DB_PREFIX . "ecommerce_societe FROM " . MAIN_DB_PREFIX . "ecommerce_societe LEFT JOIN (SELECT DISTINCT s.rowid AS company_id, es.rowid AS site_id FROM " . MAIN_DB_PREFIX . "societe AS s LEFT JOIN " . MAIN_DB_PREFIX . "categorie_societe AS cs ON cs.fk_soc = s.rowid LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.fk_cat_societe = cs.fk_categorie WHERE es.rowid IS NOT NULL) AS sl ON sl.company_id = " . MAIN_DB_PREFIX . "ecommerce_societe.fk_societe AND sl.site_id = " . MAIN_DB_PREFIX . "ecommerce_societe.fk_site WHERE sl.company_id IS NULL";
 		$this->db->query($sql);
 		$sql = "DELETE FROM " . MAIN_DB_PREFIX . "ecommerce_socpeople WHERE fk_socpeople NOT IN (select rowid from " . MAIN_DB_PREFIX . "socpeople)";
@@ -845,8 +876,9 @@ class eCommerceSite // extends CommonObject
 		if (!isset($this->api_version)) $this->api_version = 'v3';
 		if (!isset($this->authentication_type)) $this->authentication_type = 'oauth1_header';
 		// product
-		if (!isset($this->parameters['enable_product_plugin_wpml_support'])) $this->parameters['enable_product_plugin_wpml_support'] = !empty($conf->global->ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT) ? 1 : 0;
+		if (!isset($this->parameters['enable_product_plugin_wpml_support'])) $this->parameters['enable_product_plugin_wpml_support'] = !empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT')) ? 1 : 0;
 		if (!isset($this->parameters['product_status_supported'])) $this->parameters['product_status_supported'] = 'publish';
+		if (!isset($this->parameters['product_synch_direction']['price'])) $this->parameters['product_synch_direction']['price'] = 'all';
 		// stock
 		if (!empty($this->parameters['enable_warehouse_plugin_sl_support'])) { $this->parameters['enable_warehouse_plugin_support'] = 'slfw'; unset($this->parameters['enable_warehouse_plugin_sl_support']); }
 		if (!isset($this->parameters['order_actions']['valid_invoice_fk_warehouse'])) $this->parameters['order_actions']['valid_invoice_fk_warehouse'] = $this->parameters['order_actions']['valid_order_fk_warehouse'];
@@ -871,7 +903,11 @@ class eCommerceSite // extends CommonObject
 		}
 		if (isset($this->parameters['ef_crp'])) unset($this->parameters['ef_crp']);
 		if (isset($this->parameters['ef_crp_attribute'])) unset($this->parameters['ef_crp_attribute']);
-
+		$order_status_dtoe = array();
+		foreach ($this->parameters['order_status_dtoe'] as $k => $v) {
+			$order_status_dtoe[$k] = $v['selected'] ?? $v;
+		}
+		$this->parameters['order_status_dtoe'] = $order_status_dtoe;
 		$error = 0;
 		$this->db->begin();
 
@@ -935,7 +971,7 @@ class eCommerceSite // extends CommonObject
 
 		if (!isset($this->languages_cached) || $force) {
 			$languages = array();
-			if (!empty($this->parameters['enable_product_plugin_wpml_support']) && !empty($conf->global->MAIN_MULTILANGS)) {
+			if (!empty($this->parameters['enable_product_plugin_wpml_support']) && !empty(ecommercengGetGlobalString('MAIN_MULTILANGS'))) {
 				$sql = "SELECT code, lang FROM " . MAIN_DB_PREFIX . "c_ecommerceng_lang WHERE entity IN (" . getEntity('ecommerceng') . ")";
 				$resql = $this->db->query($sql);
 				if ($resql) {
@@ -951,6 +987,77 @@ class eCommerceSite // extends CommonObject
 		}
 
 		return $this->languages_cached;
+	}
+
+	/**
+	 * Create/update all extrafields needed for the site
+	 *
+	 * @return	int				Result <0 if KO, >0 if OK
+	 */
+	public function createUpdateExtrafieldsForTheSite()
+	{
+		global $conf, $langs;
+		$langs->load('ecommerceng@ecommerceng');
+		$this->error = '';
+		$this->errors = [];
+
+		require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+		$extrafields = new ExtraFields($this->db);
+
+		// Product
+		$res = $extrafields->addExtraField("ecommerceng_description_{$conf->entity}", 'ECommercengWoocommerceDescription', 'text', 1, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_short_description_{$conf->entity}", 'ECommercengWoocommerceShortDescription', 'text', 2, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_status_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceStatus', $this->name), 'select', 3, '', 'product', 0, 0, '', array('options' => array(
+			"draft" => $langs->trans('ECommercengWoocommerceStatusDraft'),
+			"pending" => $langs->trans('ECommercengWoocommerceStatusPending'),
+			"private" => $langs->trans('ECommercengWoocommerceStatusPrivate'),
+			"publish" => $langs->trans('ECommercengWoocommerceStatusPublish'),
+		)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_tax_class_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceTaxClass', $this->name), 'sellist', 4, '', 'product', 0, 0, '', array('options' => array("c_ecommerceng_tax_class:label:code::active=1 AND site_id={$this->id} AND entity={$conf->entity}" => null)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_regular_price_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceRegularPrice', $this->name), 'price', 5, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_sale_price_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceSalePrice', $this->name), 'price', 6, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_date_on_sale_from_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDateOnSaleFrom', $this->name), 'date', 7, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_date_on_sale_to_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDateOnSaleTo', $this->name), 'date', 8, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_manage_stock_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceManageStock', $this->name), 'boolean', 9, '', 'product', 0, 0, '1', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_dont_update_stock_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDontUpdateStock', $this->name), 'boolean', 10, '', 'product', 0, 0, '0', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		$backorders_modes = array(
+			"no" => $langs->trans('ECommercengWoocommerceProductBackOrdersNo'),
+			"notify" => $langs->trans('ECommercengWoocommerceProductBackOrdersNotify'),
+			"yes" => $langs->trans('ECommercengWoocommerceProductBackOrdersYes'),
+		);
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_backorders_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceProductBackOrders', $this->name), 'select', 10, '', 'product', 0, 0, '', array('options' => $backorders_modes), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->update("ecommerceng_wc_backorders_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceProductBackOrders', $this->name), 'select', '', 'product', 0, 0, 10, array('options' => $backorders_modes), 0, '0', !empty($this->parameters['product_manage_backorders']) ? 1 : 0, 0, '', '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0 && version_compare(DOL_VERSION, '20.0', '>=')) {
+			$res = $extrafields->update("ecommerceng_tax_class_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceTaxClass', $this->name), 'sellist', '', 'product', 0, 0, 4, array('options' => array("c_ecommerceng_tax_class:label:code::((active:=:1) AND (site_id:=:{$this->id}) AND (entity:=:{$conf->entity}))" => null)), 0, '0', 1, 0, '', '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		}
+		// Order
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_online_payment_{$conf->entity}", 'ECommercengWoocommerceOnlinePayment', 'boolean', 1, '', 'commande', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_status_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceOrderStatus', $this->name), 'select', 2, '', 'commande', 0, 0, '', array('options' => array(
+			"0_checkout-draft" => $langs->trans('ECommercengWoocommerceOrderStatusDraft'),
+			"0_pending" => $langs->trans('ECommercengWoocommerceOrderStatusPending'),
+			"1_on-hold" => $langs->trans('ECommercengWoocommerceOrderStatusOnHold'),
+			"2_processing" => $langs->trans('ECommercengWoocommerceOrderStatusProcessing'),
+			"3_completed" => $langs->trans('ECommercengWoocommerceOrderStatusCompleted'),
+			"3_cancelled" => $langs->trans('ECommercengWoocommerceOrderStatusCancelled'),
+			"3_refunded" => $langs->trans('ECommercengWoocommerceOrderStatusRefunded'),
+			"3_failed" => $langs->trans('ECommercengWoocommerceOrderStatusFailed'),
+			"3_trash" => $langs->trans('ECommercengWoocommerceOrderStatusTrash'),
+		)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_link_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceOrderLink', $this->name), 'url', 3, '', 'commande', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		// Third party
+		if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_role_{$this->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceCompanyRole', $this->name), 'varchar', 1, '255', 'societe', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
+		if ($res < 0) {
+			$this->error = $extrafields->error;
+			$this->errors = $extrafields->errors;
+		}
+
+		if ($res > 0) {
+			// Fix extrafields wc_update_stock to wc_manage_stock on product
+			$this->db->query("UPDATE " . MAIN_DB_PREFIX . "product_extrafields SET ecommerceng_wc_manage_stock_{$this->id}_{$conf->entity} = ecommerceng_wc_update_stock_{$this->id}_{$conf->entity}");
+			$extrafields->delete("ecommerceng_wc_update_stock_{$this->id}_{$conf->entity}", 'product');
+		}
+
+		return $res;
 	}
 
 	/**

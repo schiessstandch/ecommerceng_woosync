@@ -32,12 +32,13 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/html.formaccounting.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 
 $langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
-if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
+if (!$user->admin && !ecommercengUserHasRight($user, 'ecommerceng', 'site')) accessforbidden();
 
 $id = GETPOST('id', 'int');
 $action = GETPOST('action', 'aZ09');
@@ -151,11 +152,18 @@ if ($action == 'set_options') {
 	$object->parameters['acfw_store_credits_service'] = GETPOST('acfw_store_credits_service', 'int');
 	$object->parameters['acfw_store_credits_service'] = $object->parameters['acfw_store_credits_service'] > 0 ? $object->parameters['acfw_store_credits_service'] : 0;
 	$object->parameters['product_synch_price'] = GETPOST('product_synch_price', 'aZ09');
-	$object->parameters['product_weight_units'] = empty($conf->global->PRODUCT_DISABLE_WEIGHT) ? GETPOST('product_weight_units', 'int') : 0; // 0 = Kg
-	$object->parameters['product_dimension_units'] = empty($conf->global->PRODUCT_DISABLE_SIZE) ? GETPOST('product_dimension_units', 'int') : 2; // 2 = cm
-	$object->parameters['product_variation_mode'] = GETPOST('product_variation_mode', 'aZ09');
-    $object->parameters['enable_product_plugin_wpml_support'] = GETPOST('enable_product_plugin_wpml_support', 'int') ? 1 : 0;
+	$object->parameters['product_weight_units'] = empty(ecommercengGetGlobalString('PRODUCT_DISABLE_WEIGHT')) ? GETPOST('product_weight_units', 'int') : 0; // 0 = Kg
+	$object->parameters['product_dimension_units'] = empty(ecommercengGetGlobalString('PRODUCT_DISABLE_SIZE')) ? GETPOST('product_dimension_units', 'int') : 2; // 2 = cm
+	if (!getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+		$object->parameters['product_variation_mode'] = GETPOST('product_variation_mode', 'aZ09');
+		$object->parameters['enable_product_plugin_wpml_support'] = GETPOST('enable_product_plugin_wpml_support', 'int') ? 1 : 0;
+	}
 	$object->parameters['product_status_supported'] = GETPOST('product_status_supported', 'alphanohtml');
+	$object->parameters['product_manage_backorders'] = GETPOST('product_manage_backorders', 'int') ? 1 : 0;
+	$object->parameters['product_backorders_if_purchasable'] = GETPOST('product_backorders_if_purchasable', 'alphanohtml');
+	if (!in_array($object->parameters['product_backorders_if_purchasable'], [ 'no', 'yes', 'notify' ])) {
+		$object->parameters['product_backorders_if_purchasable'] = 'no';
+	}
 
 	if(empty($object->fk_cat_product)) {
 		setEventMessage($langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("ECommerceCatProduct")), 'errors');
@@ -163,15 +171,15 @@ if ($action == 'set_options') {
 	}
 
 	if (!$error) {
-		$result = $object->update($user);
-
+		$result = $object->createUpdateExtrafieldsForTheSite();
+		if ($result > 0) $result = $object->update($user);
 		if ($result < 0) {
 			setEventMessages($object->error, $object->errors, 'errors');
 		} else {
 			$object->price_level = GETPOST('price_level', 'int');
 
-			if (!empty($conf->global->PRODUIT_MULTIPRICES) && !empty($object->parameters['realtime_dtoe']['product']) &&
-				$object->price_level > 0 && $object->price_level <= intval($conf->global->PRODUIT_MULTIPRICES_LIMIT) &&
+			if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES')) && !empty($object->parameters['realtime_dtoe']['product']) &&
+				$object->price_level > 0 && $object->price_level <= intval(ecommercengGetGlobalString('PRODUIT_MULTIPRICES_LIMIT')) &&
 				$object->oldcopy->price_level != $object->price_level
 			) {
 				$action = 'update_level_price';
@@ -186,15 +194,17 @@ if ($action == 'set_options') {
 	$object->oldcopy = clone $object;
 
 	$object->parameters['product_synch_direction']['ref'] = GETPOST('product_synch_direction_ref', 'aZ09');
+	$object->parameters['product_synch_direction']['price'] = GETPOST('product_synch_direction_price', 'aZ09');
 	$object->parameters['product_synch_direction']['description'] = GETPOST('product_synch_direction_description', 'aZ09');
 	$object->parameters['product_synch_direction']['short_description'] = GETPOST('product_synch_direction_short_description', 'aZ09');
-	$object->parameters['product_synch_direction']['weight'] = empty($conf->global->PRODUCT_DISABLE_WEIGHT) ? GETPOST('product_synch_direction_weight', 'aZ09') : 'etod';
-	$object->parameters['product_synch_direction']['dimension'] = empty($conf->global->PRODUCT_DISABLE_SIZE) ? GETPOST('product_synch_direction_dimension', 'aZ09') : 'etod';
+	$object->parameters['product_synch_direction']['weight'] = empty(ecommercengGetGlobalString('PRODUCT_DISABLE_WEIGHT')) ? GETPOST('product_synch_direction_weight', 'aZ09') : 'etod';
+	$object->parameters['product_synch_direction']['dimension'] = empty(ecommercengGetGlobalString('PRODUCT_DISABLE_SIZE')) ? GETPOST('product_synch_direction_dimension', 'aZ09') : 'etod';
 	$object->parameters['product_synch_direction']['tax'] = GETPOST('product_synch_direction_tax', 'aZ09');
 	$object->parameters['product_synch_direction']['status'] = GETPOST('product_synch_direction_status', 'aZ09');
 	$object->parameters['product_synch_direction']['image'] = GETPOST('product_synch_direction_image', 'aZ09');
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
@@ -214,7 +224,8 @@ if ($action == 'set_options') {
 	}
 	$object->parameters['default_account'] = $values;
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
@@ -223,13 +234,14 @@ if ($action == 'set_options') {
 		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 		exit;
 	}
-} elseif ($action == 'confirm_update_level_price' && $confirm == "yes" && !empty($conf->global->PRODUIT_MULTIPRICES) && !empty($object->parameters['realtime_dtoe']['product'])) {
+} elseif ($action == 'confirm_update_level_price' && $confirm == "yes" && !empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES')) && !empty($object->parameters['realtime_dtoe']['product'])) {
 	$object->oldcopy = clone $object;
 
 	$object->price_level = GETPOST('price_level', 'int');
 
-	if ($object->price_level > 0 && $object->price_level <= intval($conf->global->PRODUIT_MULTIPRICES_LIMIT) && $object->oldcopy->price_level != $object->price_level) {
-		$result = $object->update($user);
+	if ($object->price_level > 0 && $object->price_level <= intval(ecommercengGetGlobalString('PRODUIT_MULTIPRICES_LIMIT')) && $object->oldcopy->price_level != $object->price_level) {
+		$result = $object->createUpdateExtrafieldsForTheSite();
+		if ($result > 0) $result = $object->update($user);
 
 		if ($result < 0) {
 			setEventMessages($object->error, $object->errors, 'errors');
@@ -276,7 +288,7 @@ if ($action == 'synchronize_attributes') {
 	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('ECommerceWoocommerceUpdateDictAttributes'), $langs->trans('ECommerceWoocommerceConfirmUpdateDictAttributes'), 'confirm_synchronize_attributes', '', 0, 1, 200, 800);
 } elseif ($action == 'synchronize_taxes') {
 	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('ECommerceWoocommerceUpdateDictTaxClasses'), $langs->trans('ECommerceWoocommerceConfirmUpdateDictTaxClasses'), 'confirm_synchronize_taxes', '', 0, 1, 200, 800);
-} elseif ($action == 'update_level_price' && !empty($conf->global->PRODUIT_MULTIPRICES)) {
+} elseif ($action == 'update_level_price' && !empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id.'&price_level='.$object->price_level, $langs->trans('ECommerceUpdateLevelPrice'), $langs->trans('ECommerceConfirmUpdatePriceLevel'), 'confirm_update_level_price', '', 0, 1, 200, 800);
 }
 
@@ -358,18 +370,18 @@ print $form->selectarray('base_price_type', $base_price_types, $object->ecommerc
 print '</td></tr>' . "\n";
 
 // Price level
-if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
+if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 	$price_levels = array();
-	for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
-		$key_for_label = 'PRODUIT_MULTIPRICES_LABEL'.$i;
-		$price_levels[$i] = !empty($conf->global->$key_for_label) ? $langs->trans($conf->global->$key_for_label) : $i;
+	for ($i = 1; $i <= ecommercengGetGlobalString('PRODUIT_MULTIPRICES_LIMIT'); $i++) {
+		$key_for_label = 'PRODUIT_MULTIPRICES_LABEL' . $i;
+		$price_levels[$i] =  $langs->trans("SellingPrice") . ' ' . $i . (!empty($conf->global->$key_for_label ?? '') ? ' - ' . $langs->trans($conf->global->$key_for_label) : '');
 	}
 
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommercePriceLevel") . '</td>' . "\n";
 	print '<td>' . $langs->transnoentities("ECommercePriceLevelDescription") . '</td>' . "\n";
 	print '<td class="right">' . "\n";
-	print $form->selectarray('price_level', $price_levels, $object->price_level, 1, 0, 0, '', 1, 0, 0, '', 'minwidth200 centpercent') . "\n";
+	print $form->selectarray('price_level', $price_levels, $object->price_level, 1, 0, 0, '', 0, 0, 0, '', 'minwidth200 centpercent') . "\n";
 	print '</td></tr>' . "\n";
 }
 
@@ -432,7 +444,7 @@ $sync_prices_array = array(
 print $form->selectarray('product_synch_price', $sync_prices_array, $object->parameters['product_synch_price'], 0, 0, 0, '', 0, 0, 0, '', 'minwidth200 centpercent') . "\n";
 print '</td></tr>' . "\n";
 
-if (empty($conf->global->PRODUCT_DISABLE_WEIGHT)) {
+if (empty(ecommercengGetGlobalString('PRODUCT_DISABLE_WEIGHT'))) {
 	// Weight units
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommerceProductWeightUnits") . '</td>' . "\n";
@@ -447,7 +459,7 @@ if (empty($conf->global->PRODUCT_DISABLE_WEIGHT)) {
 	print '</td></tr>' . "\n";
 }
 
-if (empty($conf->global->PRODUCT_DISABLE_SIZE)) {
+if (empty(ecommercengGetGlobalString('PRODUCT_DISABLE_SIZE'))) {
 	// Dimension units
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommerceProductDimensionUnits") . '</td>' . "\n";
@@ -467,12 +479,16 @@ print '<tr class="oddeven">' . "\n";
 print '<td>'.$langs->trans("ECommerceWoocommerceProductVariationMode").'</td>'."\n";
 print '<td>' . $langs->transnoentities("ECommerceWoocommerceProductVariationModeDescription") . '</td>' . "\n";
 print '<td class="right">' . "\n";
-$variation_modes = array(
-	'one_to_one'=>$langs->trans('ECommerceWoocommerceProductVariationOneToOne'),
-	'all_to_one'=>$langs->trans('ECommerceWoocommerceProductVariationAllToOne'),
-);
-$value = isset($object->parameters['product_variation_mode']) ? $object->parameters['product_variation_mode'] : 'one_to_one';
-print $form->selectarray('product_variation_mode', $variation_modes, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth200 centpercent') . "\n";
+if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+	print $langs->trans("DisabledBecauseOfCustomMode", 'ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') . "\n";
+} else {
+	$variation_modes = array(
+		'one_to_one'=>$langs->trans('ECommerceWoocommerceProductVariationOneToOne'),
+		'all_to_one'=>$langs->trans('ECommerceWoocommerceProductVariationAllToOne'),
+	);
+	$value = isset($object->parameters['product_variation_mode']) ? $object->parameters['product_variation_mode'] : 'one_to_one';
+	print $form->selectarray('product_variation_mode', $variation_modes, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth200 centpercent') . "\n";
+}
 print '</td></tr>' . "\n";
 
 // Support of WooCommerce plugin : WPML for WooCommerce
@@ -480,7 +496,11 @@ print '<tr class="oddeven">' . "\n";
 print '<td>' . $langs->trans("ECommerceWoocommerceEnableProductWpmlPluginSupport") . '</td>' . "\n";
 print '<td>' . $langs->transnoentities("ECommerceWoocommerceEnableProductWpmlPluginSupportDescription") . '</td>' . "\n";
 print '<td class="right">' . "\n";
-print '<input type="checkbox" name="enable_product_plugin_wpml_support" value="1"' . (!empty($object->parameters['enable_product_plugin_wpml_support']) ? ' checked' : '') . ' />' . "\n";
+if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+	print $langs->trans("DisabledBecauseOfCustomMode", 'ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') . "\n";
+} else {
+	print '<input type="checkbox" name="enable_product_plugin_wpml_support" value="1"' . (!empty($object->parameters['enable_product_plugin_wpml_support']) ? ' checked' : '') . ' />' . "\n";
+}
 print '</td></tr>' . "\n";
 
 // Supported status (draft, pending, private and publish)
@@ -491,6 +511,30 @@ print '<td class="right">' . "\n";
 $value = isset($object->parameters['product_status_supported']) ? $object->parameters['product_status_supported'] : 'publish';
 print '<input type="text" class="flat centpercent" name="product_status_supported" value="' . dol_escape_htmltag($value) . '">' . "\n";
 print '</td></tr>' . "\n";
+
+// Enable the managing of backorders.
+print '<tr class="oddeven">' . "\n";
+print '<td>' . $langs->trans("ECommerceWoocommerceProductManageBackorders") . '</td>' . "\n";
+print '<td>' . $langs->transnoentities("ECommerceWoocommerceProductManageBackordersDescription") . '</td>' . "\n";
+print '<td class="right">' . "\n";
+print '<input type="checkbox" name="product_manage_backorders" value="1"' . (!empty($object->parameters['product_manage_backorders']) ? ' checked' : '') . ' />' . "\n";
+print '</td></tr>' . "\n";
+
+if (!empty($object->parameters['product_manage_backorders'])) {
+	// If managing stock, this controls if backorders are allowed. Options: no, notify and yes. Default is no.
+	print '<tr class="oddeven">' . "\n";
+	print '<td>' . $langs->trans("ECommerceWoocommerceProductBackordersIfPurchasable") . '</td>' . "\n";
+	print '<td>' . $langs->transnoentities("ECommerceWoocommerceProductBackordersIfPurchasableDescription") . '</td>' . "\n";
+	print '<td class="right">' . "\n";
+	$backorders_modes = array(
+		"no" => $langs->trans('ECommercengWoocommerceProductBackOrdersNo'),
+		"notify" => $langs->trans('ECommercengWoocommerceProductBackOrdersNotify'),
+		"yes" => $langs->trans('ECommercengWoocommerceProductBackOrdersYes'),
+	);
+	$value = !empty($object->parameters['product_backorders_if_purchasable']) ? $object->parameters['product_backorders_if_purchasable'] : 'no';
+	print $form->selectarray('product_backorders_if_purchasable', $backorders_modes, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth200 centpercent');
+	print '</td></tr>' . "\n";
+}
 
 print '</table>'."\n";
 
@@ -535,6 +579,15 @@ $value = !empty($object->parameters['product_synch_direction']['ref']) ? $object
 print $form->selectarray('product_synch_direction_ref', $sync_direction_array, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth300') . "\n";
 print '</td></tr>' . "\n";
 
+// Synchronize price sens
+print '<tr class="oddeven">' . "\n";
+print '<td>'.$langs->trans("ECommerceProductPriceSyncDirection").'</td>'."\n";
+print '<td>' . $langs->transnoentities("ECommerceProductPriceSyncDirectionDescription") . '</td>' . "\n";
+print '<td class="right">' . "\n";
+$value = !empty($object->parameters['product_synch_direction']['price']) ? $object->parameters['product_synch_direction']['price'] : '';
+print $form->selectarray('product_synch_direction_price', $sync_direction_array, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth300') . "\n";
+print '</td></tr>' . "\n";
+
 // Synchronize description sens
 print '<tr class="oddeven">' . "\n";
 print '<td>'.$langs->trans("ECommerceProductDescriptionSyncDirection").'</td>'."\n";
@@ -553,7 +606,7 @@ $value = !empty($object->parameters['product_synch_direction']['short_descriptio
 print $form->selectarray('product_synch_direction_short_description', $sync_direction_array, $value, 0, 0, 0, '', 0, 0, 0, '', 'minwidth300') . "\n";
 print '</td></tr>' . "\n";
 
-if (empty($conf->global->PRODUCT_DISABLE_WEIGHT)) {
+if (empty(ecommercengGetGlobalString('PRODUCT_DISABLE_WEIGHT'))) {
 	// Synchronize weight sens
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommerceProductWeightSyncDirection") . '</td>' . "\n";
@@ -564,7 +617,7 @@ if (empty($conf->global->PRODUCT_DISABLE_WEIGHT)) {
 	print '</td></tr>' . "\n";
 }
 
-if (empty($conf->global->PRODUCT_DISABLE_SIZE)) {
+if (empty(ecommercengGetGlobalString('PRODUCT_DISABLE_SIZE'))) {
 	// Synchronize dimension sens
 	print '<tr class="oddeven">' . "\n";
 	print '<td>' . $langs->trans("ECommerceProductDimensionSyncDirection") . '</td>' . "\n";

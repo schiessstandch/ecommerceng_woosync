@@ -19,6 +19,7 @@
  */
 
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
 dol_include_once('/ecommerceng/class/business/eCommerceUtils.class.php');
 
@@ -26,78 +27,78 @@ require_once(DOL_DOCUMENT_ROOT.'/expedition/class/expedition.class.php');
 
 class InterfaceECommerceng
 {
-    private $db;
-    private $name;
-    private $description;
-    private $version;
+	private $db;
+	private $name;
+	private $description;
+	private $version;
 
-    public $family;
-    public $errors;
+	public $family;
+	public $errors;
 
-    /**
-     *   This class is a trigger on delivery to update delivery on eCommerce Site
-     *
-     *   @param      DoliDB		$db      Handler database access
-     */
-    function __construct($db)
-    {
-        $this->db = $db;
-
-        $this->name = preg_replace('/^Interface/i','',get_class($this));
-        $this->family = "eCommerce";
-        $this->description = "Triggers of this module update delivery on eCommerce Site according to order status.";
-        $this->version = '1.0';
-    }
-
-
-    /**
-     *   Renvoi nom du lot de triggers
-     *   @return     string      Nom du lot de triggers
-     */
-    function getName()
-    {
-        return $this->name;
-    }
-
-    /**
-     *   Renvoi descriptif du lot de triggers
-     *   @return     string      Descriptif du lot de triggers
-     */
-    function getDesc()
-    {
-        return $this->description;
-    }
-
-    /**
-     *   Renvoi version du lot de triggers
-     *   @return     string      Version du lot de triggers
-     */
-    function getVersion()
-    {
-        global $langs;
-        $langs->load("admin");
-
-        if ($this->version == 'development') return $langs->trans("Development");
-        elseif ($this->version == 'experimental') return $langs->trans("Experimental");
-        elseif ($this->version == 'dolibarr') return DOL_VERSION;
-        elseif ($this->version) return $this->version;
-        else return $langs->trans("Unknown");
-    }
-
-    /**
-     *      Fonction appelee lors du declenchement d'un evenement Dolibarr.
-     *      D'autres fonctions run_trigger peuvent etre presentes dans includes/triggers
-     *
-     *      @param      string      $action      Code de l'evenement
-     *      @param      Object      $object      Objet concerne
-     *      @param      User        $user        Objet user
-     *      @param      Translate   $langs       Objet lang
-     *      @param      Conf        $conf        Objet conf
-     *      @return     int                      <0 if fatal error, 0 si nothing done, >0 if ok
-     */
-	function runTrigger($action,$object,$user,$langs,$conf)
+	/**
+	 *   This class is a trigger on delivery to update delivery on eCommerce Site
+	 *
+	 *   @param      DoliDB		$db      Handler database access
+	 */
+	public function __construct($db)
 	{
-		if (empty($conf->ecommerceng->enabled)) return 0;     // Module not active, we do nothing
+		$this->db = $db;
+
+		$this->name = preg_replace('/^Interface/i','',get_class($this));
+		$this->family = "Opendsi";
+		$this->description = "Triggers of this module update delivery on eCommerce Site according to order status.";
+		$this->version = '1.0';
+	}
+
+
+	/**
+	 *   Renvoi nom du lot de triggers
+	 *   @return     string      Nom du lot de triggers
+	 */
+	public function getName()
+	{
+		return $this->name;
+	}
+
+	/**
+	 *   Renvoi descriptif du lot de triggers
+	 *   @return     string      Descriptif du lot de triggers
+	 */
+	public function getDesc()
+	{
+		return $this->description;
+	}
+
+	/**
+	 *   Renvoi version du lot de triggers
+	 *   @return     string      Version du lot de triggers
+	 */
+	public function getVersion()
+	{
+		global $langs;
+		$langs->load("admin");
+
+		if ($this->version == 'development') return $langs->trans("Development");
+		elseif ($this->version == 'experimental') return $langs->trans("Experimental");
+		elseif ($this->version == 'dolibarr') return DOL_VERSION;
+		elseif ($this->version) return $this->version;
+		else return $langs->trans("Unknown");
+	}
+
+	/**
+	 *      Fonction appelee lors du declenchement d'un evenement Dolibarr.
+	 *      D'autres fonctions run_trigger peuvent etre presentes dans includes/triggers
+	 *
+	 *      @param      string      $action      Code de l'evenement
+	 *      @param      Object      $object      Objet concerne
+	 *      @param      User        $user        Objet user
+	 *      @param      Translate   $langs       Objet lang
+	 *      @param      Conf        $conf        Objet conf
+	 *      @return     int                      <0 if fatal error, 0 si nothing done, >0 if ok
+	 */
+	public function runTrigger($action,$object,$user,$langs,$conf)
+	{
+		if (!ecommercengIsModEnabled()) return 0;     // Module not active, we do nothing
 
 		$error = 0;
 
@@ -372,6 +373,10 @@ class InterfaceECommerceng
 			}
 			$this->db->begin();
 
+			/**
+			 * @var Product $object_to_process
+			 */
+
 			$save_entity = $conf->entity;
 			$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - Action {$action} (ID: {$object_to_process->id})");
 
@@ -426,6 +431,12 @@ class InterfaceECommerceng
 					$eCommerceProduct = new eCommerceProduct($this->db);
 					$eCommerceProduct->fetchByProductId($object_to_process->id, $site->id);
 
+					// Todo to comment ? if multicurrency not working ?
+					$old_price = $object_to_process->price;
+					if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
+						$object_to_process->price = $object_to_process->multiprices[$site->price_level];
+					}
+
 					if ($eCommerceProduct->remote_id > 0) {
 						$eCommerceSynchro = new eCommerceSynchro($this->db, $site);
 						dol_syslog("Trigger " . $action . " try to connect to eCommerce site " . $site->name);
@@ -436,28 +447,13 @@ class InterfaceECommerceng
 						}
 
 						if (!$error) {
-							if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
-								$object_to_process->price = $object_to_process->multiprices[$site->price_level];
-							}
 							$result = $eCommerceSynchro->eCommerceRemoteAccess->updateRemoteProduct($eCommerceProduct->remote_id, $object_to_process);
-							$now = dol_now();
 							if (!$result) {
 								$error++;
 								$this->errors[] = $eCommerceSynchro->eCommerceRemoteAccess->error;
 								$this->errors = array_merge($this->errors, $eCommerceSynchro->eCommerceRemoteAccess->errors);
-							}
-						}
-
-						if (!$error) {
-							//eCommerce update link
-							$eCommerceProduct->last_update = dol_print_date($now, '%Y-%m-%d %H:%M:%S');
-							if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
-							if ($eCommerceProduct->update($user) < 0) {
-								$error++;
-								$error_msg = $langs->trans('ECommerceUpdateRemoteProductLink', $object_to_process->id, $site->name, $eCommerceProduct->error);
-								$this->errors[] = $error_msg;
-								$this->errors = array_merge($this->errors, $eCommerceProduct->errors);
-								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
+							} else {
+								$last_update_date = $result['last_update_date'];
 							}
 						}
 					} else {
@@ -471,19 +467,17 @@ class InterfaceECommerceng
 							setEventMessages($eCommerceSynchro->error, $eCommerceSynchro->errors, 'errors');
 						}
 
-						if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
-							$object_to_process->price = $object_to_process->multiprices[$site->price_level];
-						}
-
 						$result = $eCommerceSynchro->eCommerceRemoteAccess->createRemoteProduct($object_to_process);
-						$now = dol_now();
 						if (!$result) {
 							$error++;
 							$this->errors[] = $eCommerceSynchro->eCommerceRemoteAccess->error;
 							$this->errors = array_merge($this->errors, $eCommerceSynchro->eCommerceRemoteAccess->errors);
-						}
+						} else {
+							$last_update_date = $result['last_update_date'];
 
-						if (!$error) {
+							// Todo to comment ? if multicurrency not working ?
+							$object_to_process->price = $old_price;
+
 							$remote_id = $result['remote_id'];
 							$object_to_process->url = $result['remote_url'];
 							$object_to_process->context['fromsyncofecommerceid'] = $site->id;
@@ -496,38 +490,41 @@ class InterfaceECommerceng
 								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
 							}
 						}
+					}
 
-						if (!$error) {
+					// Todo to comment ? if multicurrency not working ?
+					$object_to_process->price = $old_price;
+
+					if (!$error) {
+						$eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
+						if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
+
+						if ($eCommerceProduct->id > 0) {
+							// Update remote link
+							$res = $eCommerceProduct->update($user);
+						} else {
 							// Create remote link
-							$eCommerceProduct->last_update = dol_print_date($now, '%Y-%m-%d %H:%M:%S');
-							if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
 							$eCommerceProduct->fk_product = $object_to_process->id;
 							$eCommerceProduct->fk_site = $site->id;
 							$eCommerceProduct->remote_id = $remote_id;
 							$res = $eCommerceProduct->create($user);
-							if ($res < 0) {
-								$error++;
-								$error_msg = $langs->trans('ECommerceCreateRemoteProductLink', $object_to_process->id, $site->name, $eCommerceProduct->error);
-								$this->errors[] = $error_msg;
-								$this->errors = array_merge($this->errors, $eCommerceProduct->errors);
-								dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
-							}
 						}
-					}
-
-					// Maj date product avec date de modif sur ecommerce
-					if (!$error) {
-
-						// Force the ability to run synchDtoEProduct() in case the association with the categories has changed
-						$eCommerceProduct->last_update = dol_print_date((dol_now() + 10), '%Y-%m-%d %H:%M:%S');
-
-						$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET tms = '" . $eCommerceProduct->last_update . "' WHERE rowid = " . $object_to_process->id;
-						$resql = $this->db->query($sql);
-						if (!$resql) {
+						if ($res < 0) {
 							$error++;
-							// Todo traduction du texte de l'erreur
-							$this->error = 'Error update modification date of product "' . $object_to_process->ref . '" : ' . $this->db->lasterror();
-							$this->errors[] = $this->error;
+							$error_msg = $langs->trans($eCommerceProduct->id > 0 ? 'ECommerceUpdateRemoteProductLink' : 'ECommerceCreateRemoteProductLink', $object_to_process->id, $site->name, $eCommerceProduct->error);
+							$this->errors[] = $error_msg;
+							$this->errors = array_merge($this->errors, $eCommerceProduct->errors);
+							dol_syslog(__METHOD__ . ': Error:' . $error_msg, LOG_WARNING);
+						} else {
+							// Maj date product avec date de modif sur ecommerce
+							$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET tms = '" . $eCommerceProduct->last_update . "' WHERE rowid = " . $object_to_process->id;
+							$resql = $this->db->query($sql);
+							if (!$resql) {
+								$error++;
+								// Todo traduction du texte de l'erreur
+								$this->error = 'Error update modification date of product "' . $object_to_process->ref . '" : ' . $this->db->lasterror();
+								$this->errors[] = $this->error;
+							}
 						}
 					}
 				}

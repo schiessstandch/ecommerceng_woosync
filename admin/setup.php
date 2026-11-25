@@ -27,15 +27,16 @@ if (! $res && file_exists("../../main.inc.php")) $res=@include '../../main.inc.p
 if (! $res && file_exists("../../../main.inc.php")) $res=@include '../../../main.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
-require_once(DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php');
+require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 require_once DOL_DOCUMENT_ROOT . '/includes/OAuth/bootstrap.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 
 use OAuth\Common\Storage\DoliStorage;
 
 $langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
-if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
+if (!$user->admin && !ecommercengUserHasRight($user, 'ecommerceng', 'site')) accessforbidden();
 
 $id = GETPOST('id', 'int');
 $action = GETPOST('action', 'aZ09');
@@ -121,6 +122,7 @@ if ($action == 'set_options') {
 			$object->parameters['product_status_supported'] = 'publish';
 			$object->price_level = 1;
 			$object->parameters['product_synch_direction']['ref'] = 'all';
+			$object->parameters['product_synch_direction']['price'] = 'all';
 			$object->parameters['product_synch_direction']['description'] = 'etod';
 			$object->parameters['product_synch_direction']['short_description'] = 'etod';
 			$object->parameters['product_synch_direction']['weight'] = 'etod';
@@ -141,7 +143,7 @@ if ($action == 'set_options') {
 			);
 			$values = array();
 			foreach ($order_dtoe_default_status as $d_status => $default) {
-				$values[$d_status]['selected'] = $default;
+				$values[$d_status] = $default;
 			}
 			$object->parameters['order_status_dtoe'] = $values;
 			$order_stod_default_status = array(
@@ -166,50 +168,7 @@ if ($action == 'set_options') {
 		}
 
 		// Create all extrafields
-		if ($result > 0) {
-			// Product
-			$res = $extrafields->addExtraField("ecommerceng_description_{$conf->entity}", 'ECommercengWoocommerceDescription', 'text', 1, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_short_description_{$conf->entity}", 'ECommercengWoocommerceShortDescription', 'text', 2, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_status_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceStatus', $object->name), 'select', 3, '', 'product', 0, 0, '', array('options' => array(
-				"draft" => $langs->trans('ECommercengWoocommerceStatusDraft'),
-				"pending" => $langs->trans('ECommercengWoocommerceStatusPending'),
-				"private" => $langs->trans('ECommercengWoocommerceStatusPrivate'),
-				"publish" => $langs->trans('ECommercengWoocommerceStatusPublish'),
-			)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_tax_class_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceTaxClass', $object->name), 'sellist', 4, '', 'product', 0, 0, '', array('options' => array("c_ecommerceng_tax_class:label:code::active=1 AND site_id={$object->id} AND entity={$conf->entity}" => null)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_regular_price_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceRegularPrice', $object->name), 'price', 5, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_sale_price_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceSalePrice', $object->name), 'price', 6, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_date_on_sale_from_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDateOnSaleFrom', $object->name), 'date', 7, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_date_on_sale_to_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDateOnSaleTo', $object->name), 'date', 8, '', 'product', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_manage_stock_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceManageStock', $object->name), 'boolean', 9, '', 'product', 0, 0, '1', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_dont_update_stock_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceDontUpdateStock', $object->name), 'boolean', 10, '', 'product', 0, 0, '0', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if (version_compare(DOL_VERSION, '20.0', '>=')) {
-				$res = $extrafields->update("ecommerceng_tax_class_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceTaxClass', $object->name), 'sellist', '', 'product', 0, 0, 4, array('options' => array("c_ecommerceng_tax_class:label:code::((active:=:1) AND (site_id:=:{$object->id}) AND (entity:=:{$conf->entity}))" => null)), 0, '0', 1, 0, '', '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			}
-			// Order
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_online_payment_{$conf->entity}", 'ECommercengWoocommerceOnlinePayment', 'boolean', 1, '', 'commande', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_status_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceOrderStatus', $object->name), 'select', 2, '', 'commande', 0, 0, '', array('options' => array(
-				"0_checkout-draft" => $langs->trans('ECommercengWoocommerceOrderStatusDraft'),
-				"0_pending" => $langs->trans('ECommercengWoocommerceOrderStatusPending'),
-				"1_on-hold" => $langs->trans('ECommercengWoocommerceOrderStatusOnHold'),
-				"2_processing" => $langs->trans('ECommercengWoocommerceOrderStatusProcessing'),
-				"3_completed" => $langs->trans('ECommercengWoocommerceOrderStatusCompleted'),
-				"3_cancelled" => $langs->trans('ECommercengWoocommerceOrderStatusCancelled'),
-				"3_refunded" => $langs->trans('ECommercengWoocommerceOrderStatusRefunded'),
-				"3_failed" => $langs->trans('ECommercengWoocommerceOrderStatusFailed'),
-				"3_trash" => $langs->trans('ECommercengWoocommerceOrderStatusTrash'),
-			)), 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_link_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceOrderLink', $object->name), 'url', 3, '', 'commande', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			// Third party
-			if ($res > 0) $res = $extrafields->addExtraField("ecommerceng_wc_role_{$object->id}_{$conf->entity}", $langs->trans('ECommercengWoocommerceCompanyRole', $object->name), 'varchar', 1, '255', 'societe', 0, 0, '', null, 0, '0', 1, 0, '', '', 'ecommerceng@ecommerceng', '1', 'false');
-			if ($res < 0) setEventMessages($extrafields->error, $extrafields->errors, 'errors');
-
-			if ($res > 0) {
-				// Fix extrafields wc_update_stock to wc_manage_stock on product
-				$db->query("UPDATE " . MAIN_DB_PREFIX . "product_extrafields SET ecommerceng_wc_manage_stock_{$object->id}_{$conf->entity} = ecommerceng_wc_update_stock_{$object->id}_{$conf->entity}");
-				$extrafields->delete("ecommerceng_wc_update_stock_{$object->id}_{$conf->entity}", 'product');
-			}
-		}
+		if ($result > 0) $result = $object->createUpdateExtrafieldsForTheSite();
 
 		if ($result < 0) setEventMessages($object->error, $object->errors, 'errors');
 
@@ -227,7 +186,8 @@ if ($action == 'set_options') {
 	$object->parameters['web_hooks_secret'] = GETPOST('site_web_hooks_secret', 'none');
 	$object->parameters['web_hooks_volumetry_alert'] = GETPOST('site_web_hooks_volumetry_alert', 'int');
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
 	} else {
@@ -256,7 +216,8 @@ if ($action == 'set_options') {
 	}
 
 	if (!$error) {
-		$result = $object->update($user);
+		$result = $object->createUpdateExtrafieldsForTheSite();
+		if ($result > 0) $result = $object->update($user);
 		if ($result < 0) {
 			setEventMessages($object->error, $object->errors, 'errors');
 		} else {
@@ -265,6 +226,11 @@ if ($action == 'set_options') {
 			exit;
 		}
 	}
+} elseif ($action == 'confirm_delete_processing_webhook' && $confirm == "yes") {
+	dolibarr_del_const($db, 'ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION', 0);
+	setEventMessage($langs->trans("ECommerceProcessingWebHooksSynchronisationDeleted"));
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
 } elseif ($action == 'confirm_delete' && $confirm == "yes" && $object->id > 0) {
 	$result = $object->delete($user);
 	if ($result < 0) {
@@ -291,6 +257,9 @@ $formconfirm = '';
 if ($action == 'delete') {
 	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('Delete'), $langs->trans('ECommerceConfirmDelete'), 'confirm_delete', '', 0, 1, 200, 800);
 }
+if ($action == 'delete_processing_webhook') {
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('ECommerceDeleteProcessingWebHookTitle'), $langs->trans('ECommerceConfirmDeleteProcessingWebHook'), 'confirm_delete_processing_webhook', '', 0, 1, 200, 800);
+}
 
 // Call Hook formConfirm
 $parameters = array('formConfirm' => $formconfirm);
@@ -315,6 +284,9 @@ print dol_get_fiche_head($head, 'settings', $langs->trans("Module107100Name"), 0
 
 if ($object->id > 0) {
 	print '<div class="tabsAction tabsActionNoBottom">';
+	if (!empty(ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION'))) {
+		print '<a class="butActionDelete" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&amp;action=delete_processing_webhook&token=' . ecommercengNewToken() . '">' . $langs->trans('ECommerceDeleteProcessingWebHookShort') . ' (' . dol_escape_htmltag(ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION')) . ')</a>';
+	}
 	print '<a class="butAction butActionDelete" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&amp;action=delete&token='.ecommercengNewToken().'">' . $langs->trans('Delete') . '</a>';
 	print '</div>';
 }

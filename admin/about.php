@@ -1,9 +1,11 @@
 <?php
-/* Copyright (C) 2020      Open-DSI             <support@open-dsi.fr>
+/* Copyright (C) 2004-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
+ * Copyright (C) 2025		T. Negre <tnegre@opendsi.fr>
+ * Copyright (C) 2024       Frédéric France         <frederic.france@free.fr>
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -12,104 +14,112 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 /**
- *	    \file       htdocs/ecommerceng/admin/about.php
- *		\ingroup    ecommerceng
- *		\brief      Page about of ecommerceng module
+ * \file    ecommerceng/admin/about.php
+ * \ingroup ecommerceng
+ * \brief   About page of module ECommerceNg.
  */
 
-// Change this following line to use the correct relative path (../, ../../, etc)
-$res=0;
-if (! $res && file_exists("../../main.inc.php")) $res=@include '../../main.inc.php';			// to work if your module directory is into a subdir of root htdocs directory
-if (! $res && file_exists("../../../main.inc.php")) $res=@include '../../../main.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
-if (! $res) die("Include of main fails");
+// Load Dolibarr environment
+$res = 0;
+// Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)
+if (!$res && !empty($_SERVER["CONTEXT_DOCUMENT_ROOT"])) {
+	$res = @include $_SERVER["CONTEXT_DOCUMENT_ROOT"]."/main.inc.php";
+}
+// Try main.inc.php into web root detected using web root calculated from SCRIPT_FILENAME
+$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME'];
+$tmp2 = realpath(__FILE__);
+$i = strlen($tmp) - 1;
+$j = strlen($tmp2) - 1;
+while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) {
+	$i--;
+	$j--;
+}
+if (!$res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1))."/main.inc.php")) {
+	$res = @include substr($tmp, 0, ($i + 1))."/main.inc.php";
+}
+if (!$res && $i > 0 && file_exists(dirname(substr($tmp, 0, ($i + 1)))."/main.inc.php")) {
+	$res = @include dirname(substr($tmp, 0, ($i + 1)))."/main.inc.php";
+}
+// Try main.inc.php using relative path
+if (!$res && file_exists("../../main.inc.php")) {
+	$res = @include "../../main.inc.php";
+}
+if (!$res && file_exists("../../../main.inc.php")) {
+	$res = @include "../../../main.inc.php";
+}
+if (!$res) {
+	die("Include of main fails");
+}
+
+// Libraries
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
-dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
-dol_include_once('/ecommerceng/core/modules/modECommerceNg.class.php');
+require_once DOL_DOCUMENT_ROOT.'/core/lib/functions2.lib.php';
+require_once '../lib/eCommerce.lib.php';
 
-$langs->load("admin");
-$langs->load("ecommerce@ecommerceng");
-$langs->load("opendsi@ecommerceng");
+/**
+ * @var Conf $conf
+ * @var DoliDB $db
+ * @var HookManager $hookmanager
+ * @var Translate $langs
+ * @var User $user
+ */
 
-if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
+// Translations
+$langs->loadLangs(array("errors", "admin", "ecommerceng@ecommerceng"));
 
-$id = GETPOST('id', 'int');
+// Access control
+if (!$user->admin) {
+	accessforbidden();
+}
+
+// Parameters
 $action = GETPOST('action', 'aZ09');
-$confirm = GETPOST('confirm', 'aZ09');
+$backtopage = GETPOST('backtopage', 'alpha');
 
 $object = new eCommerceSite($db);
-if (empty($action) && !($id > 0) && strlen($id) == 0) {
-	$sites = $object->listSites();
-	if (!empty($sites)) {
-		$id = array_values($sites)[0]['id'];
-	}
-}
-if ($id > 0) {
-	$result = $object->fetch($id);
-	if ($result < 0) {
-		accessforbidden($object->errorsToString());
-	} elseif ($result == 0) {
-		$langs->load('errors');
-		accessforbidden($langs->trans('ErrorRecordNotFound'));
-	}
-}
 
-/**
- *	Actions
+/*
+ * Actions
  */
-$error = 0;
 
-include dol_buildpath('/ecommerceng/admin/actions_selectsite.inc.php');
+// None
 
 
-/**
+/*
  * View
  */
 
-$wikihelp='EN:ECommerceNg_En|FR:ECommerceNg_Fr|ES:ECommerceNg_Es';
-llxHeader('', $langs->trans("ECommerceSetup"), $wikihelp);
+$form = new Form($db);
 
-$linkback='<a href="'.DOL_URL_ROOT.'/admin/modules.php">'.$langs->trans("BackToModuleList").'</a>';
-print load_fiche_titre($langs->trans("ECommerceSetup"),$linkback,'title_setup');
+$help_url = '';
+$title = "ECommerceNgSetup";
 
-// include dol_buildpath('/ecommerceng/admin/tpl/selectsite.tpl.php');
-print '<br>';
+llxHeader('', $langs->trans($title), $help_url, '', 0, 0, '', ['/ecommerceng/css/about.css'], '', 'mod-ecommerceng page-admin_about');
 
-$head=ecommercengConfigSitePrepareHead($object);
+// Subheader
+$linkback = '<a href="'.($backtopage ? $backtopage : DOL_URL_ROOT.'/admin/modules.php?restore_lastsearch_values=1').'">'.$langs->trans("BackToModuleList").'</a>';
 
-print dol_get_fiche_head($head, 'about', $langs->trans("Module107100Name"), 0, 'opendsi@ecommerceng');
-print '<br>';
+print load_fiche_titre($langs->trans($title), $linkback, 'title_setup');
 
+// Configuration header
+$head = ecommercengConfigSitePrepareHead($object);
+print dol_get_fiche_head($head, 'about', $langs->trans($title), 0, 'ecommerceng@ecommerceng');
+
+dol_include_once('/ecommerceng/core/modules/modECommerceNg.class.php');
 $modClass = new modECommerceNg($db);
-$ECommerceNgVersion = !empty($modClass->getVersion()) ? $modClass->getVersion() : 'NC';
+// TODO : $langs->defaultlang
+$pathoffile = dol_buildpath(strtolower($modClass->name).'/core/tpl/about.tpl.php', 0);
+if (file_exists($pathoffile)) {
+	require_once $pathoffile;
+} else {
+	print $modClass->getDescLong();
+}
 
-$supportvalue = "/*****"."<br>";
-$supportvalue.= " * Module : ".$langs->trans("Module107100Name")."<br>";
-$supportvalue.= " * Module version : ".$ECommerceNgVersion."<br>";
-$supportvalue.= " * Dolibarr version : ".DOL_VERSION."<br>";
-$supportvalue.= " * Dolibarr version installation initiale : ".$conf->global->MAIN_VERSION_LAST_INSTALL."<br>";
-$supportvalue.= " * Version PHP : ".PHP_VERSION."<br>";
-$supportvalue.= " *****/"."<br><br>";
-$supportvalue.= "Description de votre problème :"."<br>";
-
-
-print '<form id="ticket" method="POST" target="_blank" action="https://support.easya.solutions/create_ticket.php">';
-print '<input name=message type="hidden" value="'.$supportvalue.'" />';
-print '<input name=email type="hidden" value="'.$user->email.'" />';
-print '<table class="centpercent"><tr>'."\n";
-print '<td width="310px"><img src="../img/opendsi_dolibarr_preferred_partner.png" /></td>'."\n";
-print '<td valign="top"><p>'.$langs->trans("OpenDsiAboutDesc1").' <button type="submit" >'.$langs->trans("OpenDsiAboutDesc2").'</button> '.$langs->trans("OpenDsiAboutDesc3").'</p></td>'."\n";
-print '</tr></table>'."\n";
-print '</form>'."\n";
-
-
-
+// Page end
 print dol_get_fiche_end();
-
-
 llxFooter();
-
 $db->close();

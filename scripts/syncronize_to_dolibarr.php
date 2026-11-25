@@ -41,7 +41,7 @@ if (substr($sapi_type, 0, 3) == 'cgi') {
 
 // Check parameters
 if (!isset($argv[3]) || !in_array($argv[3], array('categories', 'products', 'thirdparties', 'orders')) || !isset($argv[5]) || !$argv[5]) {
-    print 'Usage: ' . $script_file . ' user_login_in_dolibarr site_id (categories|products|thirdparties|orders) id_from id_to';
+    print 'Usage: ' . $script_file . ' user_login_in_dolibarr site_id (categories|products|thirdparties|orders) id_from id_to [force]';
     exit(-1);
 }
 $userlogin=$argv[1];
@@ -49,12 +49,14 @@ $site_id=$argv[2];
 $type=$argv[3];
 $id_from=$argv[4];
 $id_to=$argv[5];
+$force=($argv[6] ?? '') == 'force';
 
 // Change this following line to use the correct relative path (../, ../../, etc)
 $res=0;
 if (! $res && file_exists("../../master.inc.php")) $res=@include '../../master.inc.php';			// to work if your module directory is into a subdir of root htdocs directory
 if (! $res && file_exists("../../../master.inc.php")) $res=@include '../../../master.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
@@ -120,13 +122,13 @@ if (!$error) {
 		$error++;
 	}
 
-	if (!$user->rights->ecommerceng->write) {
+	if (!ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 		print "Error unauthorized access write\n";
 		$error++;
 	}
 
-	if (!empty($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION)) {
-		print "Error - " . $langs->transnoentitiesnoconv("ECommerceProcessingWebHooksSynchronisationSince") . ': ' . $conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION . "\n";
+	if (!empty(ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION'))) {
+		print "Error - " . $langs->transnoentitiesnoconv("ECommerceProcessingWebHooksSynchronisationSince") . ': ' . ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION') . "\n";
 		$error++;
 	}
 
@@ -163,10 +165,10 @@ if (!$error) {
 			}
 			printStatus(1, 1, $nb_synchronized);
 		} elseif ($type == 'products') {
-			print "Synchronize the products\n";
+			print "Synchronize the products" . ($force ? " (Forced)" : "") . "\n";
 			printStatus(0, $max_jobs);
 			foreach ($group_request_ids as $request_ids) {
-				$result = $synchro->synchProduct($request_ids, $nb_by_request);
+				$result = $synchro->synchProduct($request_ids, $nb_by_request, $force);
 				if ($result < 0) {
 					$nb_synchronized += $result - 1;
 					$error++;
@@ -177,10 +179,10 @@ if (!$error) {
 				printStatus(++$num_jobs * $nb_by_request, $max_jobs, $nb_synchronized);
 			}
 		} elseif ($type == 'thirdparties') {
-			print "Synchronize the thirdparties\n";
+			print "Synchronize the thirdparties" . ($force ? " (Forced)" : "") . "\n";
 			printStatus(0, $max_jobs);
 			foreach ($group_request_ids as $request_ids) {
-				$result = $synchro->synchSociete($request_ids, $nb_by_request);
+				$result = $synchro->synchSociete($request_ids, $nb_by_request, $force);
 				if ($result < 0) {
 					$nb_synchronized += $result - 1;
 					$error++;

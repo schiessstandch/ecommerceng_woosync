@@ -24,6 +24,7 @@ if (! $res && file_exists("../main.inc.php")) $res=@include '../main.inc.php';		
 if (! $res && file_exists("../../main.inc.php")) $res=@include '../../main.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
 include_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
+dol_include_once("/ecommerceng/lib/compatibility.lib.php");
 dol_include_once("/ecommerceng/class/business/eCommerceSynchro.class.php");
 
 $langs->load("ecommerce@ecommerceng");
@@ -42,7 +43,7 @@ $langs->load("admin");
 $langs->load("ecommerce");
 
 // Protection if external user
-if ($user->socid > 0 || !$user->rights->ecommerceng->read) {
+if ($user->socid > 0 || !ecommercengUserHasRight($user, 'ecommerceng', 'read')) {
 	accessforbidden();
 }
 
@@ -53,6 +54,7 @@ $company_remote_ids = GETPOST('company_remote_ids','alpha');
 $product_remote_ids = GETPOST('product_remote_ids','alpha');
 $order_remote_ids = GETPOST('order_remote_ids','alpha');
 $dont_synchronize_products = GETPOST('dont_synchronize_products','aZ09');
+$force_update = GETPOST('force_update','aZ09');
 $to_nb = GETPOST('to_nb','int');
 $dtoe_to_date = GETPOST('dtoe_to_date','aZ09');
 $dtoe_to_nb = GETPOST('dtoe_to_nb','int');
@@ -106,11 +108,11 @@ if ($id) {
 		if (!empty($to_date)) $toDate = dol_stringtotime($to_date);
 
 		$toNb = 0;
-		if ($to_nb == '') $to_nb = (empty($conf->global->ECOMMERCENG_MAXRECORD_PERSYNC) ? '' : $conf->global->ECOMMERCENG_MAXRECORD_PERSYNC);     // If '0', we keep 0
+		if ($to_nb == '') $to_nb = (ecommercengGetGlobalString('ECOMMERCENG_MAXRECORD_PERSYNC'));     // If '0', we keep 0
 		if (!empty($to_nb)) $toNb = $to_nb;
 
 		$toNbDToE = 0;
-		if ($dtoe_to_nb == '') $dtoe_to_nb = (empty($conf->global->ECOMMERCENG_MAXRECORD_PERSYNC) ? '' : $conf->global->ECOMMERCENG_MAXRECORD_PERSYNC);     // If '0', we keep 0
+		if ($dtoe_to_nb == '') $dtoe_to_nb = (ecommercengGetGlobalString('ECOMMERCENG_MAXRECORD_PERSYNC'));     // If '0', we keep 0
 		if (!empty($dtoe_to_nb)) $toNbDToE = $dtoe_to_nb;
 
 		$synchro = new eCommerceSynchro($db, $site, $fromDate, $toDate, $toNb);          // $synchro->toDate will be set to dol_now if toDate no defined.
@@ -137,7 +139,7 @@ if ($id) {
 		}*/
 
 		//synch only with write rights
-		if (!$error && $user->rights->ecommerceng->write && empty($conf->global->ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION)) {
+		if (!$error && ecommercengUserHasRight($user, 'ecommerceng', 'write') && empty(ecommercengGetGlobalString('ECOMMERCE_PROCESSING_WEBHOOK_SYNCHRONIZATION'))) {
 			if (in_array(GETPOST('reset_data'), array('categories_links', 'products_links', 'thirdparties_links', 'orders_links', 'invoices_links'))) {
 				$synchro->dropImportedAndSyncData(0, GETPOST('reset_data'));
 			}
@@ -160,11 +162,11 @@ if ($id) {
 				if ($result < 0) $error++;
 			}
 			if (GETPOST('submit_synchro_product') || GETPOST('submit_synchro_product_ajax') || GETPOST('submit_synchro_all')) {
-				$result = $synchro->synchProduct(array_filter(array_map('trim', explode(',', $product_remote_ids)), 'strlen'), $toNb);
+				$result = $synchro->synchProduct(array_filter(array_map('trim', explode(',', $product_remote_ids)), 'strlen'), $toNb, !empty($force_update));
 				if ($result < 0) $error++;
 			}
 			if (GETPOST('submit_synchro_societe') || GETPOST('submit_synchro_societe_ajax') || GETPOST('submit_synchro_all')) {
-				$result = $synchro->synchSociete(array_filter(array_map('trim', explode(',', $company_remote_ids)), 'strlen'), $toNb);
+				$result = $synchro->synchSociete(array_filter(array_map('trim', explode(',', $company_remote_ids)), 'strlen'), $toNb, !empty($force_update));
 				if ($result < 0) $error++;
 			}
 			if (GETPOST('submit_synchro_commande') || GETPOST('submit_synchro_commande_ajax') || GETPOST('submit_synchro_all')) {
@@ -220,30 +222,30 @@ if ($id) {
 
 		// Count into Magento
 		if (!GETPOST('test_with_no_categ_count')) {
-			if (!$error && (empty($conf->global->ECOMMERCENG_NO_COUNT_UPDATE) || GETPOST('refresh'))) $nbCategoriesToUpdate = $synchro->getNbCategoriesToUpdate(true);
+			if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_NO_COUNT_UPDATE')) || GETPOST('refresh'))) $nbCategoriesToUpdate = $synchro->getNbCategoriesToUpdate(true);
 			else $nbCategoriesToUpdate = '?';
 			if ($nbCategoriesToUpdate < 0) $error++;
 		}
 		if (!GETPOST('test_with_no_product_count')) {
-			if (!$error && (empty($conf->global->ECOMMERCENG_NO_COUNT_UPDATE) || GETPOST('refresh'))) $nbProductToUpdate = $synchro->getNbProductToUpdate(true);
+			if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_NO_COUNT_UPDATE')) || GETPOST('refresh'))) $nbProductToUpdate = $synchro->getNbProductToUpdate(true);
 			else $nbProductToUpdate = '?';
 			if ($nbProductToUpdate < 0) $error++;
 		}
 		if (!GETPOST('test_with_no_thirdparty_count')) {
-			if (!$error && (empty($conf->global->ECOMMERCENG_NO_COUNT_UPDATE) || GETPOST('refresh'))) $nbSocieteToUpdate = $synchro->getNbSocieteToUpdate(true);
+			if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_NO_COUNT_UPDATE')) || GETPOST('refresh'))) $nbSocieteToUpdate = $synchro->getNbSocieteToUpdate(true);
 			else $nbSocieteToUpdate = '?';
 			if ($nbSocieteToUpdate < 0) $error++;
 		}
 		if (!GETPOST('test_with_no_order_count')) {
 			if (!empty($conf->commande->enabled)) {
-				if (!$error && (empty($conf->global->ECOMMERCENG_NO_COUNT_UPDATE) || GETPOST('refresh'))) $nbCommandeToUpdate = $synchro->getNbCommandeToUpdate(true);
+				if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_NO_COUNT_UPDATE')) || GETPOST('refresh'))) $nbCommandeToUpdate = $synchro->getNbCommandeToUpdate(true);
 				else $nbCommandeToUpdate = '?';
 				if ($nbCommandeToUpdate < 0) $error++;
 			}
 		}
 //		if (!GETPOST('test_with_no_invoice_count')) {
 //			if (!empty($conf->facture->enabled)) {
-//				if (!$error && (empty($conf->global->ECOMMERCENG_NO_COUNT_UPDATE) || $action == 'refresh')) $nbFactureToUpdate = $synchro->getNbFactureToUpdate(true);
+//				if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_NO_COUNT_UPDATE')) || $action == 'refresh')) $nbFactureToUpdate = $synchro->getNbFactureToUpdate(true);
 //				else $nbFactureToUpdate = '?';
 //				if ($nbFactureToUpdate < 0) $error++;
 //			}
@@ -270,7 +272,7 @@ if ($id) {
 		else $nbProductToUpdateDToE = '?';
 		if ($nbProductToUpdateDToE < 0) $error++;
 
-		if ($user->rights->ecommerceng->write)
+		if (ecommercengUserHasRight($user, 'ecommerceng', 'write'))
 			$synchRights = true;                // Set permission ok for .tpl
 
 		if (@count($synchro->success))

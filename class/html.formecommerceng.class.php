@@ -21,6 +21,8 @@
  *	\brief      File of class with all html predefined components for ecommerceng
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
+
 
 /**
  *	Class to manage generation of HTML components
@@ -107,10 +109,10 @@ class FormECommerceNg
         $out = '';
 
         // Add code for jquery to use multiselect
-       	if (! empty($conf->global->MAIN_USE_JQUERY_MULTISELECT) || defined('REQUIRE_JQUERY_MULTISELECT'))
+       	if (! empty(ecommercengGetGlobalString('MAIN_USE_JQUERY_MULTISELECT')) || defined('REQUIRE_JQUERY_MULTISELECT'))
        	{
             $selected = array_values($selected);
-       		$tmpplugin=empty($conf->global->MAIN_USE_JQUERY_MULTISELECT)?constant('REQUIRE_JQUERY_MULTISELECT'):$conf->global->MAIN_USE_JQUERY_MULTISELECT;
+       		$tmpplugin=ecommercengGetGlobalString('MAIN_USE_JQUERY_MULTISELECT') ?: constant('REQUIRE_JQUERY_MULTISELECT');
       			$out.='<!-- JS CODE TO ENABLE '.$tmpplugin.' for id '.$htmlname.' -->
        			<script type="text/javascript">
    	    			function formatResult(record) {'."\n";

@@ -19,6 +19,7 @@
 
 require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/data/eCommerceProduct.class.php');
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
 dol_include_once('/ecommerceng/class/data/woocommerce/eCommerceRemoteAccessWoocommerce.class.php');
@@ -106,9 +107,9 @@ function ecommercengConfigSitePrepareHead($object)
  */
 function updatePriceLevel($siteDb)
 {
-	global $db, $conf;
+	global $db, $conf, $langs, $user;
 
-	if (!empty($conf->global->PRODUIT_MULTIPRICES) && $siteDb->price_level > 0 && $siteDb->price_level <= intval($conf->global->PRODUIT_MULTIPRICES_LIMIT)) {
+	if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES')) && $siteDb->price_level > 0 && $siteDb->price_level <= intval(ecommercengGetGlobalString('PRODUIT_MULTIPRICES_LIMIT'))) {
 		$sql = 'SELECT p.rowid';
 		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'product as p';
 		$sql .= ' LEFT JOIN ' . MAIN_DB_PREFIX . "categorie_product as cp ON p.rowid = cp.fk_product";
@@ -148,6 +149,22 @@ function updatePriceLevel($siteDb)
 
 						$db->rollback();
 						return -2;
+					} else {
+						$last_update_date = $result['last_update_date'];
+						//eCommerce update link
+						$now = dol_now();
+						$eCommerceProduct->fetchByRemoteId($obj->remote_id, $siteDb->id);
+						$eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
+						if ($eCommerceProduct->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
+						if ($eCommerceProduct->update($user) < 0) {
+							$langs->load('ecommerceng@ecommerceng');
+							$error_msg = $langs->trans('ECommerceUpdateRemoteProductLink', $product->id, $siteDb->name, $eCommerceProduct->error);
+							dol_syslog("updatePriceLevel eCommerceProduct->update() " . $error_msg, LOG_ERR);
+							setEventMessages($error_msg, null, 'errors');
+
+							$db->rollback();
+							return -2;
+						}
 					}
 				} else {
 					dol_syslog("updatePriceLevel Product with id " . $product->id . " is not linked to an ecommerce record but has category flag to push on eCommerce. So we push it");
@@ -250,7 +267,7 @@ function ecommerceng_download_image($image, $product, &$error_message)
 	$entity = isset($product->entity) ? $product->entity : $conf->entity;
 
 	// Set upload directory
-	if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+	if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 		if ($product->type == Product::TYPE_PRODUCT) {
 			$upload_dir = $conf->product->multidir_output[$entity] . '/' . substr(substr("000" . $product->id, -2), 1, 1) . '/' . substr(substr("000" . $product->id, -2), 0, 1) . '/' . $product->id . "/photos";
 		} else {
@@ -286,7 +303,7 @@ function ecommerceng_download_image($image, $product, &$error_message)
 	// Security:
 	// Disallow file with some extensions. We rename them.
 	// Because if we put the documents directory into a directory inside web root (very bad), this allows to execute on demand arbitrary code.
-	if (preg_match('/\.htm|\.html|\.php|\.pl|\.cgi|\.exe$/i', $destfile) && empty($conf->global->MAIN_DOCUMENT_IS_OUTSIDE_WEBROOT_SO_NOEXE_NOT_REQUIRED)) {
+	if (preg_match('/\.htm|\.html|\.php|\.pl|\.cgi|\.exe$/i', $destfile) && empty(ecommercengGetGlobalString('MAIN_DOCUMENT_IS_OUTSIDE_WEBROOT_SO_NOEXE_NOT_REQUIRED'))) {
 		$destfile .= '.noexe';
 		$destpath .= '.noexe';
 	}
@@ -315,19 +332,19 @@ function ecommerceng_download_image($image, $product, &$error_message)
 	$error = 0;
 
 	// Get file
-	$timeout = !empty($conf->global->ECOMMERCE_DOWNLOAD_TIMEOUT) ? $conf->global->ECOMMERCE_DOWNLOAD_TIMEOUT : 30;
+	$timeout = ecommercengGetGlobalInt('ECOMMERCE_DOWNLOAD_TIMEOUT', 30);
 	$ch = curl_init();
 	curl_setopt($ch, CURLOPT_URL, $image['url']);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 	curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
 	$userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322)';
-	if (!empty($conf->global->ECOMMERCE_USER_AGENT)) $userAgent = $conf->global->ECOMMERCE_USER_AGENT;
+	$userAgent = ecommercengGetGlobalString('ECOMMERCE_USER_AGENT') ?: $userAgent;
 	curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
 	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 	curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
-	if (!empty($conf->global->ECOMMERCE_CURL_VERBOSE)) {
+	if (!empty(ecommercengGetGlobalString('ECOMMERCE_CURL_VERBOSE'))) {
 		curl_setopt($ch, CURLOPT_VERBOSE, true);
 		$verbose = fopen(DOL_DATA_ROOT . '/curl_verbose.txt', 'w+');
 		curl_setopt($ch, CURLOPT_STDERR, $verbose);
@@ -347,7 +364,7 @@ function ecommerceng_download_image($image, $product, &$error_message)
 		}
 	}
 	curl_close($ch);
-	if (!empty($conf->global->ECOMMERCE_CURL_VERBOSE) && isset($verbose)) {
+	if (!empty(ecommercengGetGlobalString('ECOMMERCE_CURL_VERBOSE')) && isset($verbose)) {
 		@fclose($verbose);
 	}
 
@@ -357,8 +374,8 @@ function ecommerceng_download_image($image, $product, &$error_message)
 
 	// Get in temporary file name
 	if (version_compare(phpversion(), '5.2.1', '<')) {
-		if ($conf->global->ECOMMERCE_DOWNLOAD_TMP_DIRECTORY_PATH) {
-			$tmp_path = $conf->global->ECOMMERCE_DOWNLOAD_TMP_DIRECTORY_PATH;
+		if (ecommercengGetGlobalString('ECOMMERCE_DOWNLOAD_TMP_DIRECTORY_PATH')) {
+			$tmp_path = ecommercengGetGlobalString('ECOMMERCE_DOWNLOAD_TMP_DIRECTORY_PATH');
 		} else {
 			$error_message = "Error ECOMMERCE_DOWNLOAD_TMP_DIRECTORY_PATH not defined";
 			dol_syslog(__METHOD__ . ': ' . $error_message, LOG_ERR);
@@ -396,7 +413,7 @@ function ecommerceng_download_image($image, $product, &$error_message)
 	}
 
 	// If we need to make a virus scan
-	if (empty($disablevirusscan) && file_exists($temp_file) && !empty($conf->global->MAIN_ANTIVIRUS_COMMAND)) {
+	if (empty($disablevirusscan) && file_exists($temp_file) && !empty(ecommercengGetGlobalString('MAIN_ANTIVIRUS_COMMAND'))) {
 		if (!class_exists('AntiVir')) {
 			require_once DOL_DOCUMENT_ROOT . '/core/class/antivir.class.php';
 		}
@@ -456,7 +473,7 @@ function ecommerceng_remove_obsolete_image($product, $images, &$error_message)
 	$entity = isset($product->entity) ? $product->entity : $conf->entity;
 
 	// Set upload directory
-	if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+	if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 		if ($product->type == Product::TYPE_PRODUCT) {
 			$upload_dir = $conf->product->multidir_output[$entity] . '/' . substr(substr("000" . $product->id, -2), 1, 1) . '/' . substr(substr("000" . $product->id, -2), 0, 1) . '/' . $product->id . "/photos/";
 		} else {
@@ -491,7 +508,7 @@ function ecommerceng_remove_obsolete_image($product, $images, &$error_message)
 		// Security:
 		// Disallow file with some extensions. We rename them.
 		// Because if we put the documents directory into a directory inside web root (very bad), this allows to execute on demand arbitrary code.
-		if (preg_match('/\.htm|\.html|\.php|\.pl|\.cgi|\.exe$/i', $destfile) && empty($conf->global->MAIN_DOCUMENT_IS_OUTSIDE_WEBROOT_SO_NOEXE_NOT_REQUIRED)) {
+		if (preg_match('/\.htm|\.html|\.php|\.pl|\.cgi|\.exe$/i', $destfile) && empty(ecommercengGetGlobalString('MAIN_DOCUMENT_IS_OUTSIDE_WEBROOT_SO_NOEXE_NOT_REQUIRED'))) {
 			$destfile .= '.noexe';
 		}
 

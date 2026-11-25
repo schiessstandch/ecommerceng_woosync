@@ -30,13 +30,14 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/commande/class/commande.class.php';
 require_once(DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php');
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.formmail.class.php';
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 dol_include_once('/ecommerceng/class/data/eCommercePaymentGateways.class.php');
 
 $langs->loadLangs(array("admin", "orders", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
-if (!$user->admin && !$user->rights->ecommerceng->site) accessforbidden();
+if (!$user->admin && !ecommercengUserHasRight($user, 'ecommerceng', 'site')) accessforbidden();
 
 $id = GETPOST('id', 'int');
 $action = GETPOST('action', 'aZ09');
@@ -186,7 +187,8 @@ if ($action == 'set_options') {
 	$object->parameters['order_filter_keys_metadata_product_lines_to_description_etod'] = GETPOST('order_filter_keys_metadata_product_lines_to_description_etod', 'alphanohtml');
 	$object->parameters['order_actions']['order_note_into_public_note'] = GETPOST('order_note_into_public_note', 'int') ? 1 : 0;
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
@@ -216,7 +218,8 @@ if ($action == 'set_options') {
 	}
 	$object->parameters['order_status_etod'] = $values;
 
-	$result = $object->update($user);
+	$result = $object->createUpdateExtrafieldsForTheSite();
+	if ($result > 0) $result = $object->update($user);
 
 	if ($result < 0) {
 		setEventMessages($object->error, $object->errors, 'errors');
@@ -537,7 +540,7 @@ if (!empty($object->parameters['order_actions']['create_order'])) {
 		print '</td></tr>' . "\n";
 
 		foreach ($order_dtoe_status as $d_status => $d_label) {
-			$selected = isset($object->parameters['order_status_dtoe'][$d_status]['selected']) ? $object->parameters['order_status_dtoe'][$d_status]['selected'] : (isset($object->parameters['order_status_dtoe'][$d_status]) ? $object->parameters['order_status_dtoe'][$d_status] : '');
+			$selected = isset($object->parameters['order_status_dtoe'][$d_status]) ? $object->parameters['order_status_dtoe'][$d_status] : '';
 
 			print '<tr class="oddeven">' . "\n";
 			print '<td>' . $d_label . '</td>' . "\n";

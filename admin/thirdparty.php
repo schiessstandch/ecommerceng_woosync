@@ -31,12 +31,13 @@ require_once(DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php');
 require_once(DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php');
 require_once(DOL_DOCUMENT_ROOT . '/contact/class/contact.class.php');
 require_once(DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php');
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/lib/eCommerce.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 
 $langs->loadLangs(array("admin", "companies", "bills", "accountancy", "banks", "oauth", "ecommerce@ecommerceng", "opendsi@ecommerceng"));
 
-if (!$user->admin && !$user->rights->ecommerceng->site && !empty($conf->societe->enabled)) accessforbidden();
+if (!$user->admin && !ecommercengUserHasRight($user, 'ecommerceng', 'site') && !empty($conf->societe->enabled)) accessforbidden();
 
 $id = GETPOST('id', 'int');
 $action = GETPOST('action', 'aZ09');
@@ -119,7 +120,8 @@ if ($action == 'set_options') {
 	}
 
 	if (!$error) {
-		$result = $object->update($user);
+		$result = $object->createUpdateExtrafieldsForTheSite();
+		if ($result > 0) $result = $object->update($user);
 
 		if ($result < 0) {
 			setEventMessages($object->error, $object->errors, 'errors');

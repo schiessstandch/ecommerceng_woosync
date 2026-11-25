@@ -21,6 +21,7 @@
  *      \brief      This file for managing Client WooCommerce API
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/client/eCommerceClientApi.class.php');
 dol_include_once('/ecommerceng/includes/oauth-subscriber-woocommerce/src/Oauth1.php');
 use GuzzleHttp\Client;
@@ -78,10 +79,7 @@ class eCommerceClientWooCommerceApi extends eCommerceClientApi
 		$this->api_url_prefix = '/wp-json/wc/' . $this->api_version;
 
 		try {
-			$userAgent = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:34.0) Gecko/20100101 Firefox/34.0';
-			if (!empty($conf->global->ECOMMERCE_USER_AGENT)) {
-				$userAgent = $conf->global->ECOMMERCE_USER_AGENT;
-			}
+			$userAgent = ecommercengGetGlobalString('ECOMMERCE_USER_AGENT') ?: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:34.0) Gecko/20100101 Firefox/34.0';
 			$options = [
 				// Base URI is used with relative requests
 				'base_uri' => $this->api_url,
@@ -90,7 +88,7 @@ class eCommerceClientWooCommerceApi extends eCommerceClientApi
 				// 'cookies' => true,
 				'headers' => array('User-Agent' => $userAgent),
 			];
-			if (!empty($conf->global->ECOMMERCENG_WOOCOMMERCE_NO_VERIFY_SSL)) $options['verify'] = false;
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_NO_VERIFY_SSL'))) $options['verify'] = false;
 
 			$stack = HandlerStack::create();
 			if (in_array($this->authentication_type, [ 'oauth1_header', 'oauth1_query' ])) {
@@ -116,9 +114,17 @@ class eCommerceClientWooCommerceApi extends eCommerceClientApi
 					}
 
 					// Retry on server errors (5xx HTTP status codes)
-					if ($response && $response->getStatusCode() >= 500) {
-						dol_syslog('ecommerceClientWooCommerceApi::connection is retrying on status code '.$response->getStatusCode(), LOG_WARNING);
-						return true;
+					if ($response) {
+						if ($response->getStatusCode() >= 500) {
+							dol_syslog('ecommerceClientWooCommerceApi::connection is retrying on status code ' . $response->getStatusCode(), LOG_WARNING);
+							return true;
+						} elseif ($response->getStatusCode() == 401) {
+							$error_info = json_decode(trim($response->getBody()->getContents()), true);
+							if (!empty($error_info['message']) && preg_match('/Nonce/i', $error_info['message'])) {
+								dol_syslog('ecommerceClientWooCommerceApi::connection is retrying on status code ' . $response->getStatusCode() . " ; " . $request->getMethod() . " " . $request->getUri(), LOG_WARNING);
+								return true;
+							}
+						}
 					}
 
 					// Retry on connection exceptions
@@ -159,9 +165,10 @@ class eCommerceClientWooCommerceApi extends eCommerceClientApi
 	 * @param   bool  	$without_prefix						Without api url prefix
 	 * @param   int  	$status_code						Status code returned
 	 * @param   int  	$error_info							Error info returned
+	 * @param   array  	$response_headers					Response headers returned
 	 * @return	array                 						null if KO otherwise result data
 	 */
-	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null)
+	public function sendToApi($method, $url, $options = [], $without_prefix = false, &$status_code = null, &$error_info = null, &$response_headers = null)
 	{
 		dol_syslog(__METHOD__ . " method=" . $method . " url=" . $url . " options=" . json_encode($options), LOG_DEBUG);
 
@@ -172,6 +179,6 @@ class eCommerceClientWooCommerceApi extends eCommerceClientApi
 			$options[GuzzleHttp\RequestOptions::QUERY]['consumer_secret'] = $this->authentication_password;
 		}
 
-		return parent::sendToApi($method, $url, $options, $without_prefix, $status_code, $error_info);
+		return parent::sendToApi($method, $url, $options, $without_prefix, $status_code, $error_info, $response_headers);
 	}
 }

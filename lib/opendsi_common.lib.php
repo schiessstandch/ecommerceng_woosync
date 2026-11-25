@@ -22,6 +22,7 @@
  *	\brief      Common functions opendsi for the module
  */
 
+
 /**
  * Gives the changelog. First check ChangeLog-la_LA.md then ChangeLog.md
  *

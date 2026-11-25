@@ -424,4 +424,31 @@ class eCommerceCommande
 			return -1;
 		}
 	}
+
+	/**
+	 * Get all remote_id linked to a site
+	 *
+	 * @param  int          $siteId     Site ID
+	 * @return array|int                Array of remote_id or -1 if error
+	 */
+	public function getAllRemoteIds($siteId)
+	{
+		$sql = "SELECT remote_id FROM " . MAIN_DB_PREFIX . "ecommerce_commande";
+		$sql .= " WHERE fk_site = " . intval($siteId);
+		dol_syslog(get_class($this) . "::getAllRemoteIds sql=" . $sql, LOG_DEBUG);
+		$resql = $this->db->query($sql);
+
+		if ($resql) {
+			$idsArray = array();
+			while ($obj = $this->db->fetch_object($resql)) {
+				$idsArray[] = $obj->remote_id;
+			}
+			$this->db->free($resql);
+			return $idsArray;
+		} else {
+			$this->error = "Error " . $this->db->lasterror();
+			dol_syslog(get_class($this) . "::getAllRemoteIds " . $this->error, LOG_ERR);
+			return -1;
+		}
+	}
 }

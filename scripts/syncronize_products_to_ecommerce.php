@@ -164,6 +164,7 @@ if ($max_sites > 0) {
 						} else {
 							$remote_id = $result['remote_id'];
                             $product_language = $result['language'];
+							$last_update_date = $result['last_update_date'];
 
 							$dbProduct->url = $result['remote_url'];
 							$dbProduct->context['fromsyncofecommerceid'] = $site->id;
@@ -179,6 +180,8 @@ if ($max_sites > 0) {
 						if (!$result) {
 							print "\nError: Update product (ID: {$obj->product_id}, remote ID: {$obj->remote_id}): " . errorsToString($eCommerceSynchro->eCommerceRemoteAccess) . ".\n";
 							$error++;
+						} else {
+							$last_update_date = $result['last_update_date'];
 						}
 					}
 
@@ -189,7 +192,7 @@ if ($max_sites > 0) {
 							$eCommerceProduct->fk_site = $site->id;
                             $eCommerceProduct->fk_product = $dbProduct->id;
                             if (!empty($product_language)) $eCommerceProduct->lang = $product_language;
-							$eCommerceProduct->last_update = dol_print_date(dol_now(), '%Y-%m-%d %H:%M:%S');
+							$eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
 							if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
 							$result = $eCommerceProduct->create($user);
 							if ($result < 0) {
@@ -201,7 +204,7 @@ if ($max_sites > 0) {
 							$result = $eCommerceProduct->fetch($obj->link_id);
 							if ($result > 0) {
                                 if (!empty($product_language)) $eCommerceProduct->lang = $product_language;
-								$eCommerceProduct->last_update = dol_print_date(dol_now(), '%Y-%m-%d %H:%M:%S');
+								$eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
 								if ($site->stock_sync_direction == 'dolibarr2ecommerce') $eCommerceProduct->last_update_stock = $eCommerceProduct->last_update;
 								$result = $eCommerceProduct->update($user);
 							}

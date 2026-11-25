@@ -1,0 +1,70 @@
+.about-tab {
+	color: #333;
+	font-family: Arial, sans-serif;
+	line-height: 1.6;
+	max-width:900px;
+}
+
+.about-header {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 20px;
+
+	.opendsi-logo {
+		height: 60px;
+	}
+
+	.preferred-partner-label {
+		color: #666;
+		font-size: 14px;
+	}
+
+	.preferred-partner-logo {
+		height: 40px;
+		margin-top: 5px;
+	}
+}
+
+.about-body, .about-footer {
+	h2 {
+		color: #474747;
+		margin-top: 30px;
+	}
+}
+
+.about-body {
+	.editor-preferred-partner {
+		background-color :#65c980;
+		color: #000000;
+	}
+
+	button.support, .btn-copy-clipboard {
+		background-color: #db2925;
+		border: none;
+		border-radius: 6px;
+		box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+		color: #fff;
+		cursor: pointer;
+		font-size: 15px;
+		font-weight: bold;
+		padding: 10px 20px;
+		transition: all 0.3s ease;
+	}
+
+	.btn-copy-clipboard {
+		display: inline-block;
+		line-height: 1;
+		margin-left: 5px;
+	}
+
+	button.support:hover, .btn-copy-clipboard:hover {
+		background-color: #e3001f;
+		transform: translateY(-2px);
+	}
+
+	button.support:active, .btn-copy-clipboard:active {
+		background-color: #ba253c;
+		transform: translateY(0px);
+	}
+}

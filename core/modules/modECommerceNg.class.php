@@ -22,6 +22,7 @@ require_once(DOL_DOCUMENT_ROOT.'/core/modules/DolibarrModules.class.php');
 require_once(DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php');
 require_once(DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php');
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/admin/class/gui/eCommerceMenu.class.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
@@ -51,17 +52,17 @@ class modECommerceNg extends DolibarrModules
 
 		// Family can be 'crm','financial','hr','projects','products','ecm','technic','other'
 		// It is used to group modules in module setup page
-		$this->family = 'easya';
-		$this->familyinfo = array('easya' => array('position' => '001', 'label' => $langs->trans("easyaFamily")));
+		$this->family = "Opendsi";
+		// $this->familyinfo = array('osden' => array('position' => '001', 'label' => $langs->trans("osdenFamily")));
 		// Module label (no space allowed), used if translation string 'ModuleXXXName' not found (where XXX is value of numeric property 'numero' of module)
         $this->name = preg_replace('/^mod/i', '', get_class($this));        //  Must be same than value used for if $conf->ecommerceng->enabled
 		// Module description, used if translation string 'ModuleXXXDesc' not found (where XXX is value of numeric property 'numero' of module)
 		$this->description = "Module to synchronise Dolibarr with ECommerce platform (currently ecommerce supported: WooCommerce)";
 		$this->descriptionlong = "See page https://wiki.dolibarr.org/index.php/Module_Magento_EN for more information";
-		$this->editor_name      = '<b>Easya Solutions</b>';
-        $this->editor_web       = 'https://easya.solutions';
-        $this->editor_url       = "https://easya.solutions";
-        $this->editor_email     = 'support@easya.solutions';
+		$this->editor_name      = '<b>Opendsi</b>';
+        $this->editor_web       = 'https://opendsi.fr';
+        $this->editor_url       = "https://opendsi.fr";
+        $this->editor_email     = 'support@open-dsi.fr';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr' or version
 		$this->version = trim(file_get_contents(__DIR__.'/../../VERSION'));
@@ -98,10 +99,10 @@ class modECommerceNg extends DolibarrModules
 		$this->module_parts = array(
 			'triggers' => 1,
 			'hooks' => array(
-				'expeditioncard', 'invoicecard', 'productdocuments', 'productcard', 'thirdpartycard',
+				'expeditioncard', 'invoicecard', 'ordercard', 'productdocuments', 'productcard', 'thirdpartycard',
 				'invoicelist', 'mouvementstock', 'categorycard', 'contactcard', 'productservicelist',
 				'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist',
-				'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist'
+				'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist'
 			),
 		);
 
@@ -119,9 +120,9 @@ class modECommerceNg extends DolibarrModules
 		// Dependencies
 		$this->depends = array("modSociete", "modProduct", "modCategorie", "modWebServices");        // List of modules id that must be enabled if this module is enabled
 		$this->requiredby = array();    // List of modules id to disable if this one is disabled
-        $easya_info = json_decode(file_get_contents(__DIR__.'/../../.easya_info.json'));
-        $this->phpmin = explode('.', $easya_info->php_min_version);                    // Minimum version of PHP required by module
-        $this->need_dolibarr_version = explode('.', $easya_info->dlb_min_version);    // Minimum version of Dolibarr required by module
+        $opendsi_info = json_decode(file_get_contents(__DIR__.'/../../.opendsi_info.json'));
+        $this->phpmin = explode('.', $opendsi_info->php_min_version);                    // Minimum version of PHP required by module
+        $this->need_dolibarr_version = explode('.', $opendsi_info->dlb_min_version);    // Minimum version of Dolibarr required by module
 		$this->langfiles = array("ecommerce@ecommerceng");
 
 		// Constants
@@ -209,10 +210,10 @@ class modECommerceNg extends DolibarrModules
                 "rowid",
 			),
 			'tabcond' => array(
-				$conf->ecommerceng->enabled && $eCommerceSite->hasTypeSite(2),
-				$conf->ecommerceng->enabled && $eCommerceSite->hasTypeSite(2),
-				$conf->ecommerceng->enabled && $eCommerceSite->hasTypeSite(2),
-                $conf->ecommerceng->enabled && $eCommerceSite->hasTypeSite(2) && !empty($conf->global->MAIN_MULTILANGS),
+				ecommercengIsModEnabled() && $eCommerceSite->hasTypeSite(2),
+				ecommercengIsModEnabled() && $eCommerceSite->hasTypeSite(2),
+				ecommercengIsModEnabled() && $eCommerceSite->hasTypeSite(2),
+                ecommercengIsModEnabled() && $eCommerceSite->hasTypeSite(2) && !empty(ecommercengGetGlobalString('MAIN_MULTILANGS')),
 			),
 		);
 
@@ -243,6 +244,11 @@ class modECommerceNg extends DolibarrModules
 		//$r++;
 		//$this->boxes[$r][1] = "myboxb.php";
 		//$r++;
+
+		// Note: cron 'test' and menu 'enabled' conditions below are stored in the database
+		// and evaluated later by Dolibarr core via dol_eval(), which forbids the "function"
+		// keyword and does not load the module libs. They therefore keep the historical
+		// '$conf->ecommerceng->enabled' form (works on every Dolibarr version, including < v15).
 
 		// Cronjobs
 		//------------
@@ -499,6 +505,14 @@ WHERE c.rowid IS NOT NULL" ];
 			" LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = el.fk_site" .
 			" GROUP BY el.fk_socpeople;"
 		];
+		// Used for show remote id on order list
+		$sql[] = [ 'sql' => "CREATE OR REPLACE VIEW " . MAIN_DB_PREFIX . "view_ecommerce_order_remote_ids AS" .
+			" SELECT el.fk_commande AS fk_object" .
+			" , GROUP_CONCAT(CONCAT(es.name, ' : ', el.remote_id) ORDER BY es.name ASC, el.remote_id ASC SEPARATOR '<br>') AS remote_id" .
+			" FROM " . MAIN_DB_PREFIX . "ecommerce_commande AS el" .
+			" LEFT JOIN " . MAIN_DB_PREFIX . "ecommerce_site AS es ON es.rowid = el.fk_site" .
+			" GROUP BY el.fk_commande;"
+		];
 
 		// Delete semaphore token for cron jobs
 		require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
@@ -523,7 +537,7 @@ WHERE c.rowid IS NOT NULL" ];
 					return 0;
 				}
 			}
-            if (!empty($conf->global->ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT)) dolibarr_del_const($this->db, 'ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT', $conf->entity);
+            if (!empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT'))) dolibarr_del_const($this->db, 'ECOMMERCENG_WOOCOMMERCE_WPML_SUPPORT', $conf->entity);
 		}
 
 		$this->addSettlementTerms();

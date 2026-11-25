@@ -7,6 +7,7 @@ Permission107102                                                                
 Permission107103                                                                                    =Configurer les sites e-commerce
 
 ##ADMIN##
+ECommerceNgSetup                                                                                    = Configuration Woosync
 Module107100Name                                                                                    =WooSync
 Module107100Desc                                                                                    =Module de synchronisation entre Dolibarr et les plateformes e-commerce WooCommerce
 BackToListOfSites                                                                                   =Retour à la liste des sites
@@ -58,6 +59,10 @@ ECommerceTimeoutDescription                                                     
 ECommerceDebug                                                                                      =Debug
 ECommerceDebugDescription                                                                           =Activer le debug détaillé lors d'une connection à l'API de WooCommerce
 ECommerceConfirmDelete                                                                              =Êtes vous sûre de vouloir supprimer ce site ?
+ECommerceDeleteProcessingWebHookShort                                                               =Débloquer synchro WebHooks
+ECommerceDeleteProcessingWebHookTitle                                                               =Débloquer la synchronisation des WebHooks
+ECommerceConfirmDeleteProcessingWebHook                                                             =La tâche cron de traitement des webhooks ne semble pas s'être terminée correctement. Êtes-vous sûr de vouloir supprimer le verrou de synchronisation ?
+ECommerceProcessingWebHooksSynchronisationDeleted                                                   =Le verrou de synchronisation des WebHooks a été supprimé
 #not used# ECommerceConfirmReset                                                                               =Êtes vous sûre de vouloir purger les données synchronisées liées à ce site ? (<strong>Attention<strong> : cette action est irréversible, toute les données synchronisées seront perdues)
 #not used# ECommerceSetupSaved                                                                                 =La configuration a bien été enregistrée.
 #not used# ECommerceSetupErrorDb                                                                               =Une erreur est survenue lors de l'enregistrement dans la base de données.
@@ -324,6 +329,8 @@ ECommerceProductImageSyncDirection                                              
 ECommerceProductImageSyncDirectionDescription                                                       =Ce paramètre détermine le sens de mise à jour des images
 ECommerceProductRefSyncDirection                                                                    =Synchronisation de la référence
 ECommerceProductRefSyncDirectionDescription                                                         =Ce paramètre détermine le sens de mise à jour de la référence
+ECommerceProductPriceSyncDirection                                                                  =Synchronisation du prix (et promo)
+ECommerceProductPriceSyncDirectionDescription                                                       =Ce paramètre détermine le sens de mise à jour du prix (et promo)
 ECommerceProductDescriptionSyncDirection                                                            =Synchronisation de la description
 ECommerceProductDescriptionSyncDirectionDescription                                                 =Ce paramètre détermine le sens de mise à jour de la description
 ECommerceProductShortDescriptionSyncDirection                                                       =Synchronisation de la description courte
@@ -347,6 +354,9 @@ ECommerceImportProductsPrices                                                   
 
 EcommerceNGUnlinkToECommerce                                                                        =Enlever le produit du site E-Commerce
 EcommerceNGConfirmUnlinkToECommerce                                                                 =Êtes-vous sûr de vouloir enlever ce produit du site E-Commerce ?
+EcommerceNGUnlinkOrderToECommerce                                                                   =Délier la commande du site E-Commerce
+EcommerceNGConfirmUnlinkOrderToECommerce                                                            =Êtes-vous sûr de vouloir délier cette commande du site E-Commerce ?
+EcommerceNGOrderUnlinked                                                                             =La commande a été déliée du site E-Commerce
 ECommerceResetCategoriesProductSuccess                                                              =Catégories du site sur les produits ont bien été retirées.
 
 EcommerceUpdateCompanyFromECommerce                                                                 =Mise à jour depuis le site E-Commerce
@@ -600,6 +610,10 @@ ECommerceWoocommerceGetAllWoocommerceRemoteShippingZoneMethods       =Erreur de 
 
 ECommerceWoocommerceStatusProductSupported                           = Statuts supportés
 ECommerceWoocommerceStatusProductSupportedDescription                = Liste des statuts supportés pour la synchronisation.(vide pour tous les statuts; liste de valeurs séparées par des virgules)<br>Seules les valeurs retournées par l'API sont supportées. ex: draft, pending, private, publish, ...
+ECommerceWoocommerceProductManageBackorders                          = Activé la gestion de "État du stock" du produit sur WooCommerce
+ECommerceWoocommerceProductManageBackordersDescription               = Force la valeur de "État du stock" sur WooCommerce dans "Inventaire" du produit en fonction que le produit soit en achat ou non dans dolibarr.
+ECommerceWoocommerceProductBackordersIfPurchasable                   = Gérer les ventes de produits
+ECommerceWoocommerceProductBackordersIfPurchasableDescription        = Paramétrage par défaut si non renseigné sur le produit. Gérer les ventes de produits qui ne sont plus en stock physiquement. La valeur par défaut est 'En stock' si le produit n'est pas en achat.<br>Options:<br> - 'En stock' (Ne pas autoriser) : C'est le réglage par défaut. Si le stock tombe à 0, le produit est marqué comme "Rupture de stock" et le bouton d'achat disparaît.<br> - 'Victime de son succès, retour bientôt !' (Autoriser, mais informer le client) : Le client peut toujours acheter le produit, mais un message s'affiche sur la page produit (et dans le panier) pour lui dire : "Disponible sur commande". Cela évite les frustrations liées aux délais de livraison imprévus.<br> - 'En réapprovisionnement' (Autoriser sans notification) : Le produit reste achetable normalement, même avec un stock négatif. Pour le client, c'est comme si le produit était toujours en rayon.
 
 ECommercengWoocommerceStatus                                         =Statut pour le site [%s]
 ECommercengWoocommerceDescription                                    =Description boutique
@@ -608,6 +622,11 @@ ECommercengWoocommerceOnlinePayment                                  =Paiement e
 ECommercengWoocommerceTaxClass                                       =Classe de TVA pour le site [%s]
 ECommercengWoocommerceManageStock                                    =Gestion du stock pour le site [%s]
 ECommercengWoocommerceDontUpdateStock                                =Ne pas mettre à jour le stock avec le site [%s]
+ECommercengWoocommerceProductBackOrders                              =État du stock pour le site [%s]
+ECommercengWoocommerceProductBackOrdersHelp                          =Contrôle si le produit est listé comme « en stock » ou « en rupture » sur le site.
+ECommercengWoocommerceProductBackOrdersNo                            =En stock
+ECommercengWoocommerceProductBackOrdersNotify                        =Victime de son succès, retour bientôt !
+ECommercengWoocommerceProductBackOrdersYes                           =En réapprovisionnement
 
 ECommercengWoocommerceDictAttribute                                  =Liste des attributs sur Woocommerce
 ECommercengWoocommerceDictAttributesUpdated                          =Dictionnaire des attributs depuis Woocommerce mise à jour.
@@ -690,6 +709,7 @@ ECommerceWoocommerceProductVariationOneToOne                         = Un => un
 ECommerceWoocommerceProductVariationAllToOne                         = Tous => un
 ECommerceWoocommerceProductVariationModeDescription                  = Choisir comment on synchronise les variations<br>'Un => un' créera un produit pour chaque variation du produit WooCommerce<br>'Tous => un' créera un produit et un seul pour le produit variant avec les informations du parent et les meta-données de la première variation
 
+DisabledBecauseOfCustomMode                                          = Désactivé (mode %s actif)
 ECommercengWoocommerceRegularPrice                                   = Prix régulier pour le site [%s]
 ECommercengWoocommerceSalePrice                                      = Prix promo pour le site [%s]
 ECommercengWoocommerceDateOnSaleFrom                                 = Date de début de la promo pour le site [%s]
@@ -737,6 +757,7 @@ ECommerceErrorGetImportKeyOfLine                                     = Erreur lo
 ECommerceWooCommerceStoreCredit                                      = Crédit Boutique
 
 ECommerceLinks                                                       = ID sur les boutiques
+ECommerceForceUpdate                                                 = Forcer la synchronisation même s'il est déjà à jour (Seulement pour les Produits et Tiers/Contacts)
 
 #######################################################################
 # API
@@ -805,6 +826,7 @@ ECommerceErrorValidOrder                                                        
 ECommerceErrorSetStatusOrderValidated                                                               =Erreur lors du passage de la commande à 'Validé'
 ECommerceErrorSetStatusOrderShipmentOnProcess                                                       =Erreur lors du passage de la commande à 'En cours'
 ECommerceErrorCancelOrder                                                                           =Erreur lors du passage de la commande à 'Annulée'
+ECommerceErrorReopenOrder                                                                           =Erreur lors de la réouverture de la commande annulée
 ECommerceErrorCloseOrder                                                                            =Erreur lors du passage de la commande à 'Livré'
 ECommerceErrorClassifyOrderBilled                                                                   =Erreur lors du passage de la commande à 'Traité'
 ECommerceErrorPaymentGatewaysNotFound                                                               =Le mode de paiement (%s, %s) n'a pas été trouvé dans ceux synchronisés
@@ -879,6 +901,10 @@ ECommerceErrorWhenUnlinkProductByProductId                                      
 ECommerceErrorWhenUnlinkProductByRemoteId                                                           =Erreur lors de la suppression du lien du produit (Site: %s; ID distant: %s)
 ECommerceErrorWhenUnlinkProduct                                                                     =Erreur lors de la suppression du lien du produit (Site: %s; ID : %s; ID distant: %s)
 ECommerceErrorWhenUnlinkProductCategory                                                             =Erreur lors de la suppression de la catégorie sur le produit (Site: %s; ID : %s; Catégorie ID : %s)
+ECommerceErrorWhenUnlinkOrderByOrderId                                                              =Erreur lors de la suppression du lien de la commande (Site: %s; ID : %s)
+ECommerceErrorWhenUnlinkOrderByRemoteId                                                             =Erreur lors de la suppression du lien de la commande (Site: %s; ID distant: %s)
+ECommerceErrorWhenUnlinkOrder                                                                       =Erreur lors de la suppression du lien de la commande (Site: %s; ID : %s; ID distant: %s)
+ECommerceErrorWhenUnlinkOrderRefExt                                                                 =Erreur lors de la remise à zéro de la référence externe de la commande (Site: %s; ID : %s)
 ECommerceErrorUpdateRefProduct                                                                      =Erreur lors de la modification de la référence du produit '%s' vers la nouvelle référence '%s' (elle existe déjà)
 ECommerceErrorFetchProductByRef                                                                     =Erreur lors du chargement du produit par sa référence (Ref: %s)
 ECommerceErrorProductNotFoundByRef                                                                  =Le produit n'as pas été trouvé par sa référence (Ref: %s)
@@ -894,6 +920,7 @@ ECommerceErrorConnectAPI                                                        
 ECommerceErrorUpdateThirdPartyLanguage                                                              =Erreur lors de la mise a jour de la langue du tiers (ID: %s)
 ECommerceErrorDefineBuyPrice                                                                        =Erreur lors de la mise à jour du prix dans Dolibarr (ID : %s, Prix: %s)
 ECommerceErrorAddLine                                                                               =Erreur lors de l'ajout d'une ligne de produit
+ECommerceErrorProductRefMismatch                                                                    = Le produit de la commande (ID distant %s, Ref: %s) n'est pas le même ref du produit lié dans dolibarr (ID: %s, Ref: %s)
 
 ############################################################################################
 # Warnings
@@ -904,3 +931,15 @@ ECommerceWarningSynchronizeWebHook                                              
 #not used# ECommerceWarningUpdateOrderNotSynchronized                                                          =Attention !! Tentative de mise à jour d'une commande non synchronisée
 ECommerceWarningNotifyEmailErrorCheckWebHooksStatusNotDefined                                       =Attention !! La variable globale ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_STATUS (contenant les adresses e-mails séparées par des virgules) est inactive
 ECommerceWarningNotifyEmailErrorCheckWebHooksVolumetryNotDefined                                    =Attention !! La variable globale ECOMMERCE_NOTIFY_EMAIL_ERRORS_CHECK_WEBHOOKS_VOLUMETRY (contenant les adresses e-mails séparées par des virgules) est inactive
+ECommerceWarningRemoteObjectsNotFound                                                              =%s élément(s) de type '%s' non trouvé(s) sur le site distant
+ECommerceWarningRemoteObjectNotFoundEnriched                                                       =Élément distant ID %s non trouvé sur le site (Dolibarr : %s, ID %s)
+ECommerceWarningRemoteObjectNotFound                                                               =Élément distant ID %s non trouvé sur le site
+
+## AJAX Sync ##
+ECommerceSynchOnlyLinked=Synchroniser uniquement les éléments déjà liés
+ECommerceSynchroAjaxProcessing=Traitement en cours : page %s, %s élément(s) traité(s)...
+ECommerceSynchroAjaxPageResult=Page %s : %s succès, %s erreur(s)
+ECommerceSynchroAjaxFinished=Synchronisation terminée : %s succès, %s erreur(s)
+ECommerceSynchroAjaxAborted=Synchronisation annulée par l'utilisateur
+ECommerceSynchroAjaxNetworkError=Erreur réseau, nouvelle tentative...
+ECommerceSynchroAjaxSessionExpired=Session expirée, veuillez vous reconnecter

@@ -16,6 +16,7 @@
  * or see http://www.gnu.org/
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/admin/class/data/eCommerceDict.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceCategory.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceSociete.class.php');
@@ -259,7 +260,7 @@ class eCommerceRemoteAccessWoocommerce
 		$last_update = [];
 		$result = [];
 		$idxPage = 1;
-		$per_page = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$per_page = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($fromDate) && !empty($fromDate) ? new DateTime(dol_print_date($fromDate, 'standard')) : null;
 		$to_date = isset($toDate) && !empty($toDate) ? new DateTime(dol_print_date($toDate, 'standard')) : null;
 		$customer_roles = !empty($this->site->parameters['customer_roles']) ? array_filter(array_map('trim', explode(',', $this->site->parameters['customer_roles'])), 'strlen') : array();
@@ -345,7 +346,7 @@ class eCommerceRemoteAccessWoocommerce
 		$product_variation = [];
 		$result = [];
 		$idxPage = 1;
-		$per_page = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$per_page = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($fromDate) && !empty($fromDate) ? new DateTime(dol_print_date($fromDate, 'standard')) : null;
 		$to_date = isset($toDate) && !empty($toDate) ? new DateTime(dol_print_date($toDate, 'standard')) : null;
 
@@ -459,7 +460,7 @@ class eCommerceRemoteAccessWoocommerce
 		$last_update = [];
 		$result = [];
 		$idxPage = 1;
-		$per_page = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$per_page = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($fromDate) && !empty($fromDate) ? new DateTime(dol_print_date($fromDate, 'standard')) : null;
 		$to_date = isset($toDate) && !empty($toDate) ? new DateTime(dol_print_date($toDate, 'standard')) : null;
 
@@ -541,14 +542,14 @@ class eCommerceRemoteAccessWoocommerce
 	 * @param   int             $toNb         		Max nb
 	 * @return  array|boolean                 		List of companies sorted by update time or false if error.
 	 */
-	public function convertRemoteObjectIntoDolibarrSociete($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrSociete($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page = 0)
 	{
-		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote companies ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}", LOG_DEBUG);
+		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote companies ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}" . ($page > 0 ? ", page={$page}" : ""), LOG_DEBUG);
 		global $conf, $langs;
 
 		$this->errors = array();
 		$companies = [];
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($from_date) && !empty($from_date) ? dol_print_date($from_date, '%Y-%m-%dT%H:%M:%S') : null;
 		$to_date = isset($to_date) && !empty($to_date) ? dol_print_date($to_date, '%Y-%m-%dT%H:%M:%S') : null;
 		$customer_roles = !empty($this->site->parameters['customer_roles']) ? array_filter(array_map('trim', explode(',', $this->site->parameters['customer_roles'])), 'strlen') : array();
@@ -560,29 +561,66 @@ class eCommerceRemoteAccessWoocommerce
 			'order' => 'desc',
 			'role' => $role_filter,
 		];
-		if ($toNb > 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
-		if (!empty($remoteObject)) $filters['include'] = implode(',', $remoteObject);
-		else {
+		if ($toNb > 0 && $page <= 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
+
+		// Chunk remote IDs to avoid "URL too long" errors
+		$totalRemoteObject = count($remoteObject);
+		$hasMoreChunks = false;
+		if (!empty($remoteObject)) {
+			$remoteObjectChunks = array_chunk($remoteObject, $nb_max_by_request);
+			if ($page > 0) {
+				// Page mode: AJAX page maps to chunk index
+				$chunkIdx = $page - 1;
+				if ($chunkIdx >= count($remoteObjectChunks)) {
+					return [
+						'customers' => [],
+						'total' => $totalRemoteObject,
+						'fetched' => 0,
+						'has_more' => false,
+					];
+				}
+				$remoteObject = $remoteObjectChunks[$chunkIdx];
+				$hasMoreChunks = ($chunkIdx + 1) < count($remoteObjectChunks);
+			}
+		}
+
+		if (!empty($remoteObject)) {
+			$filters['include'] = implode(',', $remoteObject);
+		} else {
 			if (isset($from_date)) $filters['after'] = $from_date;
 			if (isset($to_date)) $filters['before'] = $to_date;
 		}
 
-		$idxPage = 1;
+		$requested_ids = $remoteObject;
+		$returned_ids = array();
+
+		// In page mode (AJAX), the AJAX page number maps to the remote page for date-filter
+		// syncs. In remote IDs mode the AJAX page already selected the chunk above, so its
+		// single page is fetched with page=1.
+		$idxPage = ($page > 0 && empty($remoteObject)) ? $page : 1;
 		$nbTotalRecords = 0;
+		$response_headers = null;
 		do {
 			$filters['page'] = $idxPage++;
 
-			$page = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'customers', [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
-			if (!isset($page) && ($idxPage == 2 || $status_code != 403)) {
+			$page_data = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'customers', [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code, $error_info, $response_headers);
+			if (!isset($page_data) && ($filters['page'] == 1 || $status_code != 403)) {
 				$this->errors[] = $langs->trans('ECommerceWoocommerceConvertRemoteObjectIntoDolibarrSociete', $this->site->name);
 				$this->errors[] = $this->client->errorsToString();
 				dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
 				return false;
 			}
 
-			if (!isset($page)) $page = array();
+			if (!isset($page_data)) $page_data = array();
 
-			foreach ($page as $company) {
+			foreach ($page_data as $company) {
+				// In AJAX mode, stop early if client disconnected (cancel)
+				if ($page > 0) {
+					echo ' '; @ob_flush(); @flush();
+					if (connection_aborted()) break;
+				}
+
+				$returned_ids[$company['id']] = true;
 				if (!empty($customer_roles) && !in_array($company['role'], $customer_roles)) continue;
 				$company_data = $this->convertCustomerDataIntoProcessedData($company);
 				if ($company_data === false) return false;
@@ -591,9 +629,33 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			if ($toNb > 0 && $nbTotalRecords >= $toNb) break;
-		} while (count($page) == $nb_max_by_request);
+			if ($page > 0) break;
+		} while (count($page_data) == $nb_max_by_request);
 
-		dol_syslog(__METHOD__ . ": end, converted " . count($companies) . " remote companies", LOG_DEBUG);
+		// Detect remote IDs not found on the WooCommerce site
+		$missing_remote_ids = array();
+		if (!empty($requested_ids)) {
+			foreach ($requested_ids as $rid) {
+				if (!isset($returned_ids[$rid])) {
+					$missing_remote_ids[] = (string) $rid;
+				}
+			}
+		}
+		if (!empty($missing_remote_ids)) {
+			$this->warnings[] = $langs->trans('ECommerceWarningRemoteObjectsNotFound', count($missing_remote_ids), 'customer') . ' : ' . implode(', ', $missing_remote_ids);
+		}
+
+		dol_syslog(__METHOD__ . ": end, converted " . count($companies) . " remote companies" . (!empty($missing_remote_ids) ? ", missing remote IDs: " . implode(', ', $missing_remote_ids) : ""), LOG_DEBUG);
+
+		if ($page > 0) {
+			return [
+				'customers' => $companies,
+				'total' => $totalRemoteObject > 0 ? $totalRemoteObject : (isset($response_headers['X-WP-Total'][0]) ? (int) $response_headers['X-WP-Total'][0] : -1),
+				'fetched' => count($companies),
+				'has_more' => $hasMoreChunks || count($page_data) == $nb_max_by_request,
+				'missing_remote_ids' => $missing_remote_ids,
+			];
+		}
 		return $companies;
 	}
 
@@ -627,23 +689,23 @@ class eCommerceRemoteAccessWoocommerce
 			'zip' => $remote_data['billing']['postcode'],
 			'town' => $remote_data['billing']['city'],
 			'country_id' => $this->getCountryId($remote_data['billing']['country'], 3),
-			'phone' => $remote_data['billing']['phone'],
+			'phone' => dol_trunc($remote_data['billing']['phone'], version_compare(DOL_VERSION, '22.0.0') >= 0 ? 30 : 20, 'right', 'UTF-8', 1),
 			'default_lang' => $mysoc->default_lang,
 			'remote_datas' => $remote_data,
 			'extrafields' => [
-				"ecommerceng_wc_role_{$this->site->id}_{$conf->entity}" => $langs->trans('ECommercengWoocommerceCompanyRole_' . $remote_data['role']),
+				"ecommerceng_wc_role_{$this->site->id}_{$conf->entity}" => $remote_data['role'],
 			],
 		];
 
 		// Default language
-		if ($item['country_id'] != $mysoc->country_id && !empty($conf->global->ECOMMERCENG_WOOCOMMERCE_DEFAULT_LANG_OTHER_COUNTRY)) {
-			$item['default_lang'] = $conf->global->ECOMMERCENG_WOOCOMMERCE_DEFAULT_LANG_OTHER_COUNTRY;
+		if ($item['country_id'] != $mysoc->country_id && !empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_DEFAULT_LANG_OTHER_COUNTRY'))) {
+			$item['default_lang'] = ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_DEFAULT_LANG_OTHER_COUNTRY');
 		}
 
 		// Meta datas
-		if (!empty($conf->global->ECOMMERCENG_WOOCOMMERCE_VAT_NUMBER_META_NAME)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_VAT_NUMBER_META_NAME'))) {
 			foreach ($remote_data['meta_data'] as $data) {
-				if ($data['key'] == $conf->global->ECOMMERCENG_WOOCOMMERCE_VAT_NUMBER_META_NAME) {
+				if ($data['key'] == ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_VAT_NUMBER_META_NAME')) {
 					$item['vatnumber'] = $data['value'];
 					break;
 				}
@@ -654,7 +716,7 @@ class eCommerceRemoteAccessWoocommerce
 		if (!empty($remote_data['billing']['company'])) {
 			$item['type'] = 'company';
 			$item['name'] = $remote_data['billing']['company'];
-			$item['email'] = !empty($conf->global->ECOMMERCENG_WOOCOMMERCE_GET_EMAIL_ON_COMPANY) ? $remote_data['email'] : null;
+			$item['email'] = !empty(ecommercengGetGlobalString('ECOMMERCENG_WOOCOMMERCE_GET_EMAIL_ON_COMPANY')) ? $remote_data['email'] : null;
 		} // User
 		else {
 			if (!empty($remote_data['billing']['first_name']) || !empty($remote_data['billing']['last_name'])) {
@@ -664,7 +726,7 @@ class eCommerceRemoteAccessWoocommerce
 				$firstname = $remote_data['first_name'];
 				$lastname = $remote_data['last_name'];
 			}
-			if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 				$firstname = dol_ucwords(dol_strtolower($firstname));
 				$lastname = dol_strtoupper($lastname);
 			}
@@ -729,7 +791,7 @@ class eCommerceRemoteAccessWoocommerce
 		) {
 			$firstname = !empty($bContact['first_name']) ? $bContact['first_name'] : $remoteCompany['first_name'];
 			$lastname = !empty($bContact['last_name']) ? $bContact['last_name'] : $remoteCompany['last_name'];
-			if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 				$firstname = dol_ucwords(dol_strtolower($firstname));
 				$lastname = dol_strtoupper($lastname);
 			}
@@ -748,7 +810,7 @@ class eCommerceRemoteAccessWoocommerce
 				'town' => $bContact['city'],
 				'country_id' => $this->getCountryId($bContact['country'], 3),
 				'email' => !empty($bContact['email']) ? $bContact['email'] : $remoteCompany['email'],
-				'phone' => $bContact['phone'],
+				'phone' => dol_trunc($bContact['phone'], 30, 'right', 'UTF-8', 1),
 				'fax' => null,
 			];
 		}
@@ -765,7 +827,7 @@ class eCommerceRemoteAccessWoocommerce
 			) {
 				$firstname = !empty($sContact['first_name']) ? $sContact['first_name'] : $remoteCompany['first_name'];
 				$lastname = !empty($sContact['last_name']) ? $sContact['last_name'] : $remoteCompany['last_name'];
-				if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+				if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 					$firstname = dol_ucwords(dol_strtolower($firstname));
 					$lastname = dol_strtoupper($lastname);
 				}
@@ -803,18 +865,18 @@ class eCommerceRemoteAccessWoocommerce
 	 * @param   int             $toNb         Max nb
 	 * @return  array|boolean                 List of products sorted by update time or false if error.
 	 */
-	public function convertRemoteObjectIntoDolibarrProduct($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrProduct($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page_num = 0)
 	{
-		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote products ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}", LOG_DEBUG);
+		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote products ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}" . ($page_num > 0 ? ", page={$page_num}" : ""), LOG_DEBUG);
 		global $conf, $langs;
 
-		if (!empty($conf->global->ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD)) {
-			return [];
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD'))) {
+			return $page_num > 0 ? ['products' => [], 'total' => 0, 'fetched' => 0, 'has_more' => false] : [];
 		}
 
 		$this->errors = array();
 		$products = [];
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($from_date) ? dol_print_date($from_date, '%Y-%m-%dT%H:%M:%S') : null;
 		$to_date = isset($to_date) ? dol_print_date($to_date, '%Y-%m-%dT%H:%M:%S') : null;
 		$product_variation_mode_all_to_one = !empty($this->site->parameters['product_variation_mode']) && $this->site->parameters['product_variation_mode'] == 'all_to_one';
@@ -833,12 +895,31 @@ class eCommerceRemoteAccessWoocommerce
 			}
 		}
 
+		// Chunk parent IDs to avoid "URL too long" errors
+		$totalRemoteObject = count($remoteObject);
+		$hasMoreChunks = false;
+		if (!empty($include_ids) && count($include_ids) > 1) {
+			$include_ids_values = array_values($include_ids);
+			$chunks = array_chunk($include_ids_values, $nb_max_by_request);
+			if ($page_num > 0) {
+				$chunkIdx = $page_num - 1;
+				if ($chunkIdx >= count($chunks)) {
+					return ['products' => [], 'total' => $totalRemoteObject, 'fetched' => 0, 'has_more' => false];
+				}
+				$chunk = $chunks[$chunkIdx];
+				$include_ids = array_combine($chunk, $chunk);
+				// Keep only variation IDs for parents in this chunk
+				$include_variation_ids = array_intersect_key($include_variation_ids, $include_ids);
+				$hasMoreChunks = ($chunkIdx + 1) < count($chunks);
+			}
+		}
+
 		$filters = [
 			'per_page' => $nb_max_by_request,
 			'orderby' => 'date',
 			'order' => 'asc',
 		];
-		if ($toNb > 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
+		if ($toNb > 0 && $page_num <= 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
 		if (empty($remoteObject)) $filters['status'] = 'publish';
 		if (!empty($include_ids)) {
 			if (count($include_ids) == 1) {
@@ -851,12 +932,22 @@ class eCommerceRemoteAccessWoocommerce
 			if (isset($to_date)) $filters['before'] = $to_date;
 		}
 
-		$idxPage = 1;
+		// Save requested IDs to detect missing remote objects
+		$requested_parent_ids = $include_ids;
+		$requested_variation_ids = $include_variation_ids;
+		$returned_parent_ids = array();
+		$returned_variation_ids = array();
+
+		// In page mode (AJAX), the AJAX page number maps to the remote page for date-filter
+		// syncs. In remote IDs mode the AJAX page already selected the chunk above, so its
+		// single page is fetched with page=1.
+		$idxPage = ($page_num > 0 && empty($include_ids)) ? $page_num : 1;
 		$nbTotalRecords = 0;
+		$response_headers = null;
 		do {
 			$filters['page'] = $idxPage++;
 
-			$page = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'products' . $one_product_id, [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
+			$page = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'products' . $one_product_id, [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code, $error_info, $response_headers);
 			if (!isset($page) && ($idxPage == 2 || $status_code != 403)) {
 				$this->errors[] = $langs->trans('ECommerceWoocommerceConvertRemoteObjectIntoDolibarrProduct', $this->site->name);
 				$this->errors[] = $this->client->errorsToString();
@@ -868,6 +959,14 @@ class eCommerceRemoteAccessWoocommerce
 			if (!empty($one_product_id) && !empty($page)) $page = [$page];
 
 			foreach ($page as $product) {
+				// In AJAX mode, stop early if client disconnected (cancel)
+				if ($page_num > 0) {
+					echo ' '; @ob_flush(); @flush();
+					if (connection_aborted()) break;
+				}
+
+				$returned_parent_ids[$product['id']] = true;
+
 				// Don't synchronize the variation parent
 				if (empty($product['variations']) || !empty($product['parent_id'])) {
 					$data = $this->convertProductDataIntoProcessedData($product);
@@ -921,6 +1020,7 @@ class eCommerceRemoteAccessWoocommerce
 
 						if (is_array($variations)) {
 							foreach ($variations as $variation) {
+								$returned_variation_ids[$product['id']][$variation['id']] = true;
 								$data = $this->convertProductDataIntoProcessedData($variation, $product);
 								if (!is_array($data)) {
 									$this->errors = array_merge(array($langs->trans('ECommerceErrorWhenConvertProductData', $product['id'] . '|' . $variation['id'])), $this->errors);
@@ -936,9 +1036,40 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			if ($toNb > 0 && $nbTotalRecords >= $toNb) break;
+			if ($page_num > 0) break;
 		} while (count($page) == $nb_max_by_request);
 
-		dol_syslog(__METHOD__ . ": end, converted " . count($products) . " remote products", LOG_DEBUG);
+		// Detect remote IDs not found on the WooCommerce site
+		$missing_remote_ids = array();
+		if (!empty($requested_parent_ids)) {
+			foreach (array_diff_key($requested_parent_ids, $returned_parent_ids) as $missing_id) {
+				$missing_remote_ids[] = (string) $missing_id;
+			}
+		}
+		if (!empty($requested_variation_ids)) {
+			foreach ($requested_variation_ids as $parent_id => $var_ids) {
+				foreach ($var_ids as $var_id) {
+					if (!isset($returned_variation_ids[$parent_id][$var_id])) {
+						$missing_remote_ids[] = $parent_id . '|' . $var_id;
+					}
+				}
+			}
+		}
+		if (!empty($missing_remote_ids)) {
+			$this->warnings[] = $langs->trans('ECommerceWarningRemoteObjectsNotFound', count($missing_remote_ids), 'product') . ' : ' . implode(', ', $missing_remote_ids);
+		}
+
+		dol_syslog(__METHOD__ . ": end, converted " . count($products) . " remote products" . (!empty($missing_remote_ids) ? ", missing remote IDs: " . implode(', ', $missing_remote_ids) : ""), LOG_DEBUG);
+
+		if ($page_num > 0) {
+			return [
+				'products' => $products,
+				'total' => $totalRemoteObject > 0 ? $totalRemoteObject : (isset($response_headers['X-WP-Total'][0]) ? (int) $response_headers['X-WP-Total'][0] : -1),
+				'fetched' => count($products),
+				'has_more' => $hasMoreChunks || count($page) == $nb_max_by_request,
+				'missing_remote_ids' => $missing_remote_ids,
+			];
+		}
 		return $products;
 	}
 
@@ -1008,30 +1139,48 @@ class eCommerceRemoteAccessWoocommerce
 
 		$product_variation_mode_all_to_one = !empty($this->site->parameters['product_variation_mode']) && $this->site->parameters['product_variation_mode'] == 'all_to_one';
 
-		// Label
-		if ($isVariation) {
-			$label = $parent_remote_data['name'];
-			if (!$product_variation_mode_all_to_one) {
-				$variation_label = '';
-				if (!empty($remote_data['name'])) {
-					$variation_label = preg_replace('/^' . preg_quote($label, '/') . '/', '', $remote_data['name']);
-					$variation_label = trim(preg_replace('/^\s*-\s*/', '', $variation_label));
-				}
-				$label .= ' - ';
+		// Custom mode: variations not supported
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') && $isVariation) {
+			$this->errors[] = 'Product variations are not supported in ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 mode (remote product ID: ' . ($remote_data['id'] ?? '') . ', parent ID: ' . $parent_id . ')';
+			dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+			return false;
+		}
 
-				// Attributes of the variation
-				if (!empty($variation_label)) {
-					$label .= $variation_label;
-				} elseif (is_array($remote_data['attributes'])) {
-					$to_print = [];
-					foreach ($remote_data['attributes'] as $attribute) {
-						$to_print[] = $attribute['option'];
+		// Label
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+			$label = 'N/A';
+			if (is_array($remote_data['meta_data'])) {
+				foreach ($remote_data['meta_data'] as $meta) {
+					if ($meta['key'] == 'product_short_description') {
+						$label = $meta['value'];
 					}
-					$label .= implode(', ', $to_print);
 				}
 			}
 		} else {
-			$label = $remote_data['name'] ?? '';
+			if ($isVariation) {
+				$label = $parent_remote_data['name'];
+				if (!$product_variation_mode_all_to_one) {
+					$variation_label = '';
+					if (!empty($remote_data['name'])) {
+						$variation_label = preg_replace('/^' . preg_quote($label, '/') . '/', '', $remote_data['name']);
+						$variation_label = trim(preg_replace('/^\s*-\s*/', '', $variation_label));
+					}
+					$label .= ' - ';
+
+					// Attributes of the variation
+					if (!empty($variation_label)) {
+						$label .= $variation_label;
+					} elseif (is_array($remote_data['attributes'])) {
+						$to_print = [];
+						foreach ($remote_data['attributes'] as $attribute) {
+							$to_print[] = $attribute['option'];
+						}
+						$label .= implode(', ', $to_print);
+					}
+				}
+			} else {
+				$label = $remote_data['name'] ?? '';
+			}
 		}
 //		$label = dol_trunc($label, 255);
 
@@ -1059,7 +1208,7 @@ class eCommerceRemoteAccessWoocommerce
 			return false;
 		}
 
-		$multilangs = !empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support']);
+		$multilangs = !empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1');
 
 		if (($multilangs && (empty($remote_data['translations']) || empty($remote_data['lang']))) || empty($remote_data['type'])) {
 			$remote_data = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'products/' . $remote_data['id']);
@@ -1092,6 +1241,23 @@ class eCommerceRemoteAccessWoocommerce
 		$parent_id = $remote_data['parent_id'] ?? 0;
 		if (empty($parent_id)) $parent_id = $parent_remote_data['id'] ?? 0;
 		$isVariation = $parent_id > 0;
+
+		// Custom mode: variations not supported
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+			if ($isVariation) {
+				$this->errors[] = $langs->trans('ECommerceWoocommerceConvertRemoteObjectIntoDolibarrProduct', $this->site->name);
+				$this->errors[] = 'Product variations are not supported in ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 mode (remote product ID: ' . $remote_data['id'] . ', parent ID: ' . $parent_id . ')';
+				dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+				return false;
+			}
+			if (!empty($remote_data['variations']) || $remote_data['type'] == 'variable') {
+				$this->errors[] = $langs->trans('ECommerceWoocommerceConvertRemoteObjectIntoDolibarrProduct', $this->site->name);
+				$this->errors[] = 'Variable products with variations are not supported in ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 mode (remote product ID: ' . $remote_data['id'] . ')';
+				dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+				return false;
+			}
+		}
+
 		if ($isVariation && (empty($parent_remote_data) || ($multilangs && (empty($parent_remote_data['translations']) || empty($parent_remote_data['lang']))) || $parent_remote_data['id'] != $parent_id)) {
 			$parent_remote_data = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'products/' . $parent_id);
 			if (!isset($parent_remote_data)) {
@@ -1114,6 +1280,7 @@ class eCommerceRemoteAccessWoocommerce
 		$productSynchPrice = isset($this->site->parameters['product_synch_price']) ? $this->site->parameters['product_synch_price'] : 'regular';
 		$productImageSynchDirection = isset($this->site->parameters['product_synch_direction']['image']) ? $this->site->parameters['product_synch_direction']['image'] : '';
 		$productRefSynchDirection = isset($this->site->parameters['product_synch_direction']['ref']) ? $this->site->parameters['product_synch_direction']['ref'] : '';
+		$productPriceSynchDirection = isset($this->site->parameters['product_synch_direction']['price']) ? $this->site->parameters['product_synch_direction']['price'] : '';
 		$productDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['description']) ? $this->site->parameters['product_synch_direction']['description'] : '';
 		$productShortDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['short_description']) ? $this->site->parameters['product_synch_direction']['short_description'] : '';
 		$productWeightSynchDirection = isset($this->site->parameters['product_synch_direction']['weight']) ? $this->site->parameters['product_synch_direction']['weight'] : '';
@@ -1257,14 +1424,14 @@ class eCommerceRemoteAccessWoocommerce
 			'fk_product_type' => ($remote_data['virtual'] ? 1 : 0), // 0 (product) or 1 (service)
 			'status' => $remote_data['status'],
 			'label' => $label,
-			'price' => $price,
+			//'price' => $price,
 			'envente' => ($isVariation || $product_variation_mode_all_to_one || empty($remote_data['variations']) ? 1 : 0),
 			'enachat' => null,
 			'finished' => 1,    // 1 = manufactured, 0 = raw material
 			'canvas' => $canvas,
 			'remote_datas' => ($isVariation && isset($parent_remote_data) ? [ 'variation' => $remote_data, 'parent' => $parent_remote_data ] : $remote_data),
 			'categories' => $categories,
-			'price_min' => '',
+			//'price_min' => '',
 //			'fk_country' => '',
 			'url' => $isVariation && $product_variation_mode_all_to_one ? $parent_remote_data['permalink'] ?? '' : $remote_data['permalink'],
 			// Stock
@@ -1276,25 +1443,31 @@ class eCommerceRemoteAccessWoocommerce
 			'has_variations' => !empty($remote_data['variations']) || $remote_data['type'] == 'variable',
 			'extrafields' => [
 				"ecommerceng_wc_regular_price_{$this->site->id}_{$conf->entity}" => $remote_data['regular_price'],
-				"ecommerceng_wc_sale_price_{$this->site->id}_{$conf->entity}" => $remote_data['sale_price'],
-				"ecommerceng_wc_date_on_sale_from_{$this->site->id}_{$conf->entity}" => $date_on_sale_from,
-				"ecommerceng_wc_date_on_sale_to_{$this->site->id}_{$conf->entity}" => $date_on_sale_to,
 				"ecommerceng_wc_manage_stock_{$this->site->id}_{$conf->entity}" => !empty($remote_data['manage_stock']) ? 1 : 0,
 				"ecommerceng_stockable_product" => $remote_data['type'] == 'woosb' ? 0 : 1,
+				"ecommerceng_wc_backorders_{$this->site->id}_{$conf->entity}" => ($remote_data['backorders'] ?? ''),
 			],
 			'other_data' => $other_data,
 		];
 
 		// Synchronize ref
-		if ($productRefSynchDirection == 'etod' || $productRefSynchDirection == 'all') {
-			$product['ref'] = $remote_data['sku'];
+		if ($productRefSynchDirection == 'etod' || $productRefSynchDirection == 'all' || getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+			$product['ref'] = getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') ? $remote_data['name'] : $remote_data['sku'];
+		}
+		// Synchronize price (and promo)
+		if ($productPriceSynchDirection == 'etod' || $productPriceSynchDirection == 'all') {
+			$product['price'] = $price;
+			$product['price_min'] = '';
+			$product['extrafields']["ecommerceng_wc_sale_price_{$this->site->id}_{$conf->entity}"] = $remote_data['sale_price'];
+			$product['extrafields']["ecommerceng_wc_date_on_sale_from_{$this->site->id}_{$conf->entity}"] = $date_on_sale_from;
+			$product['extrafields']["ecommerceng_wc_date_on_sale_to_{$this->site->id}_{$conf->entity}"] = $date_on_sale_to;
 		}
 		// Synchronize short and long description
 		if ($productDescriptionSynchDirection == 'etod' || $productDescriptionSynchDirection == 'all') {
-			$product['extrafields']["ecommerceng_description_{$conf->entity}"] = $this->replace4byte(empty($remote_data['description']) ? $parent_remote_data['description'] ?? '' : $remote_data['description']);
+			$product['extrafields']["ecommerceng_description_{$conf->entity}"] = dol_trunc($this->replace4byte(empty($remote_data['description']) ? $parent_remote_data['description'] ?? '' : $remote_data['description']), 16777215, 'right', 'UTF-8', 1);
 		}
 		if ($productShortDescriptionSynchDirection == 'etod' || $productShortDescriptionSynchDirection == 'all') {
-			$product['extrafields']["ecommerceng_short_description_{$conf->entity}"] = $this->replace4byte(empty($remote_data['short_description']) ? $parent_remote_data['short_description'] ?? '' : $remote_data['short_description']);
+			$product['extrafields']["ecommerceng_short_description_{$conf->entity}"] = dol_trunc($this->replace4byte(empty($remote_data['short_description']) ? $parent_remote_data['short_description'] ?? '' : $remote_data['short_description']), 16777215, 'right', 'UTF-8', 1);
 		}
 		// Synchronize weight
 		if ($productWeightSynchDirection == 'etod' || $productWeightSynchDirection == 'all') {
@@ -1439,7 +1612,7 @@ class eCommerceRemoteAccessWoocommerce
 			} else { // == slfw
 				if (is_array($remote_data['locations'])) {
 					foreach ($remote_data['locations'] as $info) {
-						$product_stock_by_warehouse[$info['id']] = $info['quantity'];
+						$product_stock_by_warehouse[$info['id']] = ($info['quantity'] !== '' ? $info['quantity'] : 0);
 					}
 				}
 			}
@@ -1458,6 +1631,7 @@ class eCommerceRemoteAccessWoocommerce
 //			$product['components'] = $components;
 			$product['extrafields']["ecommerceng_wc_manage_stock_{$this->site->id}_{$conf->entity}"] = $metas_data['woosb_manage_stock'] == 'on' ? 1 : 0; // disable stock management
 		}
+		// TODO Add hook set product data to send to woocommerce
 
 		return $product;
 	}
@@ -1489,14 +1663,14 @@ class eCommerceRemoteAccessWoocommerce
 	 * @param   int             $toNb        		Max nb
 	 * @return  array|boolean                 		List of orders sorted by update time or false if error.
 	 */
-	public function convertRemoteObjectIntoDolibarrCommande($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0)
+	public function convertRemoteObjectIntoDolibarrCommande($from_date = null, $to_date = null, $remoteObject = array(), $toNb = 0, $page_num = 0)
 	{
-		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote orders ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}", LOG_DEBUG);
+		dol_syslog(__METHOD__ . ": Get " . count($remoteObject) . " remote orders ID: " . implode(', ', $remoteObject) . " for site ID {$this->site->id}" . ($page_num > 0 ? ", page={$page_num}" : ""), LOG_DEBUG);
 		global $conf, $langs;
 
 		$this->errors = array();
 		$orders = [];
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 		$from_date = isset($from_date) ? dol_print_date($from_date, '%Y-%m-%dT%H:%M:%S') : null;
 		$to_date = isset($to_date) ? dol_print_date($to_date, '%Y-%m-%dT%H:%M:%S') : null;
 
@@ -1505,19 +1679,43 @@ class eCommerceRemoteAccessWoocommerce
 			'orderby' => 'date',
 			'order' => 'asc',
 		];
-		if ($toNb > 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
-		if (!empty($remoteObject)) $filters['include'] = implode(',', $remoteObject);
-		else {
+		if ($toNb > 0 && $page_num <= 0) $filters['per_page'] = min($nb_max_by_request, $toNb);
+
+		// Chunk remote IDs to avoid "URL too long" errors
+		$totalRemoteObject = count($remoteObject);
+		$hasMoreChunks = false;
+		if (!empty($remoteObject)) {
+			$remoteObjectChunks = array_chunk($remoteObject, $nb_max_by_request);
+			if ($page_num > 0) {
+				$chunkIdx = $page_num - 1;
+				if ($chunkIdx >= count($remoteObjectChunks)) {
+					return ['orders' => [], 'total' => $totalRemoteObject, 'fetched' => 0, 'has_more' => false];
+				}
+				$remoteObject = $remoteObjectChunks[$chunkIdx];
+				$hasMoreChunks = ($chunkIdx + 1) < count($remoteObjectChunks);
+			}
+		}
+
+		if (!empty($remoteObject)) {
+			$filters['include'] = implode(',', $remoteObject);
+		} else {
 			if (isset($from_date)) $filters['after'] = $from_date;
 			if (isset($to_date)) $filters['before'] = $to_date;
 		}
 
-		$idxPage = 1;
+		$requested_ids = $remoteObject;
+		$returned_ids = array();
+
+		// In page mode (AJAX), the AJAX page number maps to the remote page for date-filter
+		// syncs. In remote IDs mode the AJAX page already selected the chunk above, so its
+		// single page is fetched with page=1.
+		$idxPage = ($page_num > 0 && empty($remoteObject)) ? $page_num : 1;
 		$nbTotalRecords = 0;
+		$response_headers = null;
 		do {
 			$filters['page'] = $idxPage++;
 
-			$page = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'orders', [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
+			$page = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, 'orders', [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code, $error_info, $response_headers);
 			if (!isset($page) && ($idxPage == 2 || $status_code != 403)) {
 				$this->errors[] = $langs->trans('ECommerceWoocommerceConvertRemoteObjectIntoDolibarrCommande', $this->site->name);
 				$this->errors[] = $this->client->errorsToString();
@@ -1528,6 +1726,13 @@ class eCommerceRemoteAccessWoocommerce
 			if (!isset($page)) $page = array();
 
 			foreach ($page as $order) {
+				// In AJAX mode, stop early if client disconnected (cancel)
+				if ($page_num > 0) {
+					echo ' '; @ob_flush(); @flush();
+					if (connection_aborted()) break;
+				}
+
+				$returned_ids[$order['id']] = true;
 				$order_data = $this->convertOrderDataIntoProcessedData($order);
 				if ($order_data === false) {
 					$this->errors = array_merge(array($langs->trans('ECommerceErrorWhenConvertOrderData', $order['id'])), $this->errors);
@@ -1538,9 +1743,33 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			if ($toNb > 0 && $nbTotalRecords >= $toNb) break;
+			if ($page_num > 0) break;
 		} while (count($page) == $nb_max_by_request);
 
-		dol_syslog(__METHOD__ . ": end, converted " . count($orders) . " remote orders", LOG_DEBUG);
+		// Detect remote IDs not found on the WooCommerce site
+		$missing_remote_ids = array();
+		if (!empty($requested_ids)) {
+			foreach ($requested_ids as $rid) {
+				if (!isset($returned_ids[$rid])) {
+					$missing_remote_ids[] = (string) $rid;
+				}
+			}
+		}
+		if (!empty($missing_remote_ids)) {
+			$this->warnings[] = $langs->trans('ECommerceWarningRemoteObjectsNotFound', count($missing_remote_ids), 'order') . ' : ' . implode(', ', $missing_remote_ids);
+		}
+
+		dol_syslog(__METHOD__ . ": end, converted " . count($orders) . " remote orders" . (!empty($missing_remote_ids) ? ", missing remote IDs: " . implode(', ', $missing_remote_ids) : ""), LOG_DEBUG);
+
+		if ($page_num > 0) {
+			return [
+				'orders' => $orders,
+				'total' => $totalRemoteObject > 0 ? $totalRemoteObject : (isset($response_headers['X-WP-Total'][0]) ? (int) $response_headers['X-WP-Total'][0] : -1),
+				'fetched' => count($orders),
+				'has_more' => $hasMoreChunks || count($page) == $nb_max_by_request,
+				'missing_remote_ids' => $missing_remote_ids,
+			];
+		}
 		return $orders;
 	}
 
@@ -1590,7 +1819,7 @@ class eCommerceRemoteAccessWoocommerce
 		$outlangs = $langs;
 		$order_language = '';
 		$select_language = 'ec_none';
-		if (!empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support'])) {
+		if (!empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 			// Get metadata
 			$metas_data = array();
 			if (is_array($remote_data['meta_data'])) {
@@ -1633,7 +1862,7 @@ class eCommerceRemoteAccessWoocommerce
 				$description = '';
 
 				// WPML and multi-language support
-				if (!empty($order_language) && !empty($item['product_id'])) {
+				if (!empty($order_language) && !empty($item['product_id']) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 					$product_link = new eCommerceProduct($this->db);
 					$result = $product_link->fetchByRemoteId($remote_id, $this->site->id);
 					if ($result < 0 && !empty($product_link->error)) {
@@ -1695,9 +1924,9 @@ class eCommerceRemoteAccessWoocommerce
 					'type' => 'product',
 					'parent_item_id' => isset($item_id) ? $item_id : (isset($parent_match[$item['id']]) ? $parent_match[$item['id']] : 0),
 					'item_id' => $item['id'],
-					'ref' => $item['sku'],
+					'ref' => getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') ? $item['name'] : $item['sku'],
 					'label' => $label,
-					'description' => $description,
+					'description' => dol_trunc($description, 16777215, 'right', 'UTF-8', 1),
 					'id_remote_product' => $remote_id,
 					'product_type' => 'simple',
 					'price' => $price,
@@ -2024,7 +2253,7 @@ class eCommerceRemoteAccessWoocommerce
 		$bContact = $remote_data['billing'];
 		$firstname = $bContact['first_name'];
 		$lastname = $bContact['last_name'];
-		if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 			$firstname = dol_ucwords(dol_strtolower($firstname));
 			$lastname = dol_strtoupper($lastname);
 		}
@@ -2045,7 +2274,7 @@ class eCommerceRemoteAccessWoocommerce
 			'town' => $bContact['city'],
 			'country_id' => $this->getCountryId($bContact['country'], 3),
 			'email' => $bContact['email'],
-			'phone' => $bContact['phone'],
+			'phone' => dol_trunc($bContact['phone'], 30, 'right', 'UTF-8', 1),
 			'fax' => null,
 		];
 
@@ -2066,7 +2295,7 @@ class eCommerceRemoteAccessWoocommerce
 			) {
 				$firstname = $sContact['first_name'];
 				$lastname = $sContact['last_name'];
-				if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+				if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 					$firstname = dol_ucwords(dol_strtolower($firstname));
 					$lastname = dol_strtoupper($lastname);
 				}
@@ -2096,7 +2325,7 @@ class eCommerceRemoteAccessWoocommerce
 					'town' => $sContact['city'],
 					'country_id' => $this->getCountryId($sContact['country'], 3),
 					'email' => $email,
-					'phone' => isset($sContact['phone']) ? $sContact['phone'] : null,
+					'phone' => isset($sContact['phone']) ? dol_trunc($sContact['phone'], 30, 'right', 'UTF-8', 1) : null,
 					'fax' => null,
 				];
 
@@ -2179,7 +2408,7 @@ class eCommerceRemoteAccessWoocommerce
 			'total_tva' => $remote_data['total_tax'],
 			'total_ttc' => $remote_data['total'],
 			'items' => $items,
-			'note' => $this->replace4byte($remote_data['customer_note']),
+			'note' => dol_trunc($this->replace4byte($remote_data['customer_note']), 16777215, 'right', 'UTF-8', 1),
 			'socpeopleCommande' => $contactBilling,
 			'socpeopleFacture' => $contactInvoice,
 			'socpeopleLivraison' => $contactShipping,
@@ -2267,7 +2496,7 @@ class eCommerceRemoteAccessWoocommerce
 		$outlangs = $langs;
 		$order_language = '';
 		$select_language = 'ec_none';
-		if (!empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support'])) {
+		if (!empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 			// Get metadata
 			$metas_data = array();
 			if (is_array($remote_data['meta_data'])) {
@@ -2309,7 +2538,7 @@ class eCommerceRemoteAccessWoocommerce
 				$description = '';
 
 				// WPML and multi-language support
-				if (!empty($order_language)) {
+				if (!empty($order_language) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 					$product_link = new eCommerceProduct($this->db);
 					$result = $product_link->fetchByRemoteId($remote_id, $this->site->id);
 					if ($result < 0 && !empty($product_link->error)) {
@@ -2370,7 +2599,7 @@ class eCommerceRemoteAccessWoocommerce
 					'refund_item_id' => $metas_data['_refunded_item_id']['value'],
 					'parent_item_id' => isset($item_id) ? $item_id : (isset($parent_match[$item['id']]) ? $parent_match[$item['id']] : 0),
 					'item_id' => $item['id'],
-					'ref' => $item['sku'],
+					'ref' => getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') ? $item['name'] : $item['sku'],
 					'label' => $label,
 					'description' => $description,
 					'id_remote_product' => $remote_id,
@@ -2706,14 +2935,14 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Get remote category tree for site ID {$this->site->id}", LOG_DEBUG);
 		global $conf, $langs;
 
-		if (!empty($conf->global->ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD'))) {
 			return [];
 		}
 
 		$this->errors = array();
 		$categories = [];
 		$idxPage = 1;
-		$per_page = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$per_page = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		do {
 			$filters = [
@@ -2730,7 +2959,7 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			if (!isset($page)) $page = array();
-			$multilangs = !empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support']);
+			$multilangs = !empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']);
 
 			foreach ($page as $category) {
 				$categories[$category['id']] = [
@@ -2830,7 +3059,7 @@ class eCommerceRemoteAccessWoocommerce
 			'updated_at' => '',
 		];
 
-		$multilangs = !empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support']);
+		$multilangs = !empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']);
 		if ($multilangs) {
 			$translations_ids = [];
 			if (!empty($result['translations'])) {
@@ -2876,7 +3105,7 @@ class eCommerceRemoteAccessWoocommerce
 		$this->errors = array();
 		$return_data = array();
 
-		$initial_data = empty($remote_id) || !empty($conf->global->ECOMMERCE_INITIAL_DATA_PRODUCT);
+		$initial_data = empty($remote_id) || !empty(ecommercengGetGlobalString('ECOMMERCE_INITIAL_DATA_PRODUCT'));
 
 		$isProductVariation = false;
 		$isProductVariationHasOne = false;
@@ -2888,9 +3117,17 @@ class eCommerceRemoteAccessWoocommerce
 			$remote_product_variation_ids[] = $idsProduct[2];
 		}
 
+		// Custom mode: variations not supported
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') && ($isProductVariation || strpos($remote_id, '|') !== false)) {
+			$this->errors[] = 'Product variations are not supported in ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 mode (remote ID: ' . $remote_id . ', Dolibarr product ID: ' . $object->id . ')';
+			dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+			return array();
+		}
+
 		$productSynchPrice = isset($this->site->parameters['product_synch_price']) ? $this->site->parameters['product_synch_price'] : 'regular';
 		$productImageSynchDirection = isset($this->site->parameters['product_synch_direction']['image']) ? $this->site->parameters['product_synch_direction']['image'] : '';
 		$productRefSynchDirection = isset($this->site->parameters['product_synch_direction']['ref']) ? $this->site->parameters['product_synch_direction']['ref'] : '';
+		$productPriceSynchDirection = isset($this->site->parameters['product_synch_direction']['price']) ? $this->site->parameters['product_synch_direction']['price'] : '';
 		$productDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['description']) ? $this->site->parameters['product_synch_direction']['description'] : '';
 		$productShortDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['short_description']) ? $this->site->parameters['product_synch_direction']['short_description'] : '';
 		$productWeightSynchDirection = isset($this->site->parameters['product_synch_direction']['weight']) ? $this->site->parameters['product_synch_direction']['weight'] : '';
@@ -2910,7 +3147,7 @@ class eCommerceRemoteAccessWoocommerce
 
 		// Convert Weight
 		$from_unit = (int) $object->weight_units;
-		$to_unit = isset($this->site->parameters['product_weight_units']) ? (int) $this->site->parameters['product_weight_units'] : (empty($conf->global->MAIN_WEIGHT_DEFAULT_UNIT) ? 0 : (int) $conf->global->MAIN_WEIGHT_DEFAULT_UNIT);
+		$to_unit = isset($this->site->parameters['product_weight_units']) ? (int) $this->site->parameters['product_weight_units'] : (ecommercengGetGlobalInt('MAIN_WEIGHT_DEFAULT_UNIT'));
 		$totalWeight = weight_convert((double) $object->weight, $from_unit, $to_unit);
 
 		// Convert Dimension
@@ -2924,7 +3161,7 @@ class eCommerceRemoteAccessWoocommerce
 
 		// Price
 //        $error_price = 0;
-		if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
+		if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 			$price_level = !empty($this->site->price_level) ? $this->site->price_level : 1;
 			if ($this->site->ecommerce_price_type == 'TTC') {
 //                if ($object->multiprices_base_type[$price_level] == 'TTC' || $object->multiprices_ttc[$price_level] == 0) {
@@ -3023,7 +3260,7 @@ class eCommerceRemoteAccessWoocommerce
 
 			// Product - Images properties
 			$entity = isset($object->entity) ? $object->entity : $conf->entity;
-			if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+			if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 				if ($object->type == Product::TYPE_PRODUCT) {
 					$dir = $conf->product->multidir_output[$entity] . '/' . substr(substr("000" . $object->id, -2), 1, 1) . '/' . substr(substr("000" . $object->id, -2), 0, 1) . '/' . $object->id . "/photos/";
 				} else {
@@ -3094,7 +3331,7 @@ class eCommerceRemoteAccessWoocommerce
 
 			// Build file list
 			$filearray = dol_dir_list($dir, "files", 0, '', '(\.meta|_preview.*\.png)$', 'position_name', SORT_ASC, 1);
-			if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+			if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 				$filearrayold = dol_dir_list($dir, "files", 0, '', '(\.meta|_preview.*\.png)$', 'position_name', SORT_ASC, 1);
 				$filearray = array_merge($filearray, $filearrayold);
 			}
@@ -3136,7 +3373,7 @@ class eCommerceRemoteAccessWoocommerce
 
 		// Multi-languages
 		$translates = array();
-		if (!empty($conf->global->MAIN_MULTILANGS) && !empty($this->site->parameters['enable_product_plugin_wpml_support'])) {
+		if (!empty(ecommercengGetGlobalString('MAIN_MULTILANGS')) && !empty($this->site->parameters['enable_product_plugin_wpml_support']) && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 			$language_list = $this->site->getLanguages();
 			foreach ($language_list as $remote_lang => $language) {
 				if ($remote_lang == 'ec_none' || !isset($object->multilangs[$language])) continue;
@@ -3200,9 +3437,9 @@ class eCommerceRemoteAccessWoocommerce
 				//'regular_price' => $productSynchPrice == 'regular' ? $price : $regular_price,                              // string       Variation regular price.
 				//'sale_price' => $sale_price,                                     // string       Variation sale price.
 				//'date_on_sale_from' => '',                              // date-time    Start date of sale price, in the site’s timezone.
-				'date_on_sale_from_gmt' => $date_on_sale_from,                          // date-time    Start date of sale price, as GMT.
+				//'date_on_sale_from_gmt' => $date_on_sale_from,                          // date-time    Start date of sale price, as GMT.
 				//'date_on_sale_to' => '',                                // date-time    End date of sale price, in the site’s timezone.
-				'date_on_sale_to_gmt' => $date_on_sale_to,                            // date-time    End date of sale price, in the site’s timezone.
+				//'date_on_sale_to_gmt' => $date_on_sale_to,                            // date-time    End date of sale price, in the site’s timezone.
 				//'visible' => '',                                        // boolean      Define if the attribute is visible on the “Additional information” tab in the product’s page. Default is true.
 				//'virtual' => $object->type == Product::TYPE_SERVICE,    // boolean      If the variation is virtual. Default is false.
 				//'downloadable' => '',                                   // boolean      If the variation is downloadable. Default is false.
@@ -3224,9 +3461,14 @@ class eCommerceRemoteAccessWoocommerce
 				//'meta_data' => $meta_data,                              // array        Meta data. See Product variation - Meta data properties
 			];
 
-			if (is_array($object->context['ec_price_entities']) && in_array($this->site->entity, $object->context['ec_price_entities'])) {
+			// Synchronize price
+			if (($productPriceSynchDirection == 'dtoe' || $productPriceSynchDirection == 'all')
+				&& is_array($object->context['ec_price_entities']) && in_array($this->site->entity, $object->context['ec_price_entities'])
+			) {
 				$variationData['regular_price'] = $productSynchPrice == 'regular' || $initial_data ? $price : $regular_price;
 				$variationData['sale_price'] = $sale_price;
+				$variationData['date_on_sale_from_gmt'] = $date_on_sale_from;
+				$variationData['date_on_sale_to_gmt'] = $date_on_sale_to;
 				$object->array_options["options_ecommerceng_wc_regular_price_{$this->site->id}_{$conf->entity}"] = $variationData['regular_price'];
 			}
 			if ($productImageSynchDirection == 'dtoe' || $productImageSynchDirection == 'all') {
@@ -3445,7 +3687,7 @@ class eCommerceRemoteAccessWoocommerce
 			$status = $object->array_options["options_ecommerceng_wc_status_{$this->site->id}_{$conf->entity}"];
 
 			$productData = [
-				'name' => $object->label,                            // string		Product name.
+				'name' => getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') ? $object->ref : $object->label,                            // string		Product name.
 				//'slug'                  => '',			                            // string		Product slug.
 				//'type'                  => '',			                            // string		Product type. Options: simple, grouped, external and variable. Default is simple.
 				//'status' => (!empty($status) ? $status : ''), //$object->status ? 'publish' : 'pending',	// string		Product status (post status). Options: draft, pending, private and publish. Default is publish.
@@ -3457,9 +3699,9 @@ class eCommerceRemoteAccessWoocommerce
 				//'regular_price' => $productSynchPrice == 'regular' ? $price : $regular_price,                          // string		Product regular price.
 				//'sale_price'            => $sale_price,                                      // string		Product sale price.
 				//'date_on_sale_from'     => '',                                      // date-time	Start date of sale price, in the site’s timezone.
-				'date_on_sale_from_gmt' => $date_on_sale_from,                                      // date-time	Start date of sale price, as GMT.
+				//'date_on_sale_from_gmt' => $date_on_sale_from,                                      // date-time	Start date of sale price, as GMT.
 				//'date_on_sale_to'       => '',                                      // date-time	End date of sale price, in the site’s timezone.
-				'date_on_sale_to_gmt' => $date_on_sale_to,                                      // date-time	End date of sale price, in the site’s timezone.
+				//'date_on_sale_to_gmt' => $date_on_sale_to,                                      // date-time	End date of sale price, in the site’s timezone.
 				'virtual' => $object->type == Product::TYPE_SERVICE,  // boolean		If the product is virtual. Default is false.
 				//'downloadable'          => false,                                   // boolean		If the product is downloadable. Default is false.
 				//'downloads'             => $downloads,                              // array		List of downloadable files. See Product - Downloads properties
@@ -3491,15 +3733,19 @@ class eCommerceRemoteAccessWoocommerce
 				//'meta_data'             => $meta_data,                              // array		Meta data. See Product - Meta data properties
 			];
 
-			if (is_array($object->context['ec_price_entities']) && in_array($this->site->entity, $object->context['ec_price_entities'])) {
+			if (($productPriceSynchDirection == 'dtoe' || $productPriceSynchDirection == 'all')
+				&& is_array($object->context['ec_price_entities']) && in_array($this->site->entity, $object->context['ec_price_entities'])
+			) {
 				$productData['regular_price'] = $productSynchPrice == 'regular' || $initial_data ? $price : $regular_price;
 				$productData['sale_price'] = $sale_price;
+				$productData['date_on_sale_from_gmt'] = $date_on_sale_from;
+				$productData['date_on_sale_to_gmt'] = $date_on_sale_to;
 				$object->array_options["options_ecommerceng_wc_regular_price_{$this->site->id}_{$conf->entity}"] = $productData['regular_price'];
 			}
 			if ($productImageSynchDirection == 'dtoe' || $productImageSynchDirection == 'all') {
 				$productData['images'] = (!empty($images) ? $images : array());
 			}
-			if ($productRefSynchDirection == 'dtoe' || $productRefSynchDirection == 'all') {
+			if (($productRefSynchDirection == 'dtoe' || $productRefSynchDirection == 'all') && !getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
 				$productData['sku'] = $object->ref;
 			}
 			if ($productDescriptionSynchDirection == 'dtoe' || $productDescriptionSynchDirection == 'all') {
@@ -3579,6 +3825,13 @@ class eCommerceRemoteAccessWoocommerce
 				}
 			}
 
+			if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+				$productData['meta_data'][] = array(
+					'key' => 'product_short_description',
+					'value' => (string) $object->label
+				);
+			}
+
 			$return_data['product'] = array(
 				'remote_id' => $remote_product_id,
 				'data' => $productData,
@@ -3656,8 +3909,12 @@ class eCommerceRemoteAccessWoocommerce
 						if (is_array($remote_product['locations'])) {
 							foreach ($remote_product['locations'] as $location) {
 								if (!isset($stock_by_location[$location['id']])) {
-									$total_stock += $location['quantity'];
-									$stock_by_location[$location['id']] = $location;
+									$quantity = ($location['quantity'] !== '' ? $location['quantity'] : 0);
+									$total_stock += $quantity;
+									$stock_by_location[$location['id']] = array(
+										'id' => $location['id'],
+										'quantity' => $quantity,
+									);
 								}
 							}
 						}
@@ -3682,7 +3939,15 @@ class eCommerceRemoteAccessWoocommerce
 //				$return_data['manage_stock'] = false;			// boolean      Stock management at product or variation level. Default is false.
 				$return_data['stock_quantity'] = $total_stock;	// integer      Stock quantity.
 				$return_data['in_stock'] = $total_stock > 0;	// boolean      Controls whether or not the variation is listed as “in stock” or “out of stock” on the frontend. Default is true.
-//				$return_data['backorders'] = 'no';				// string       If managing stock, this controls if backorders are allowed. Options: no, notify and yes. Default is no.
+				if (!empty($this->site->parameters['product_manage_backorders'])) {
+					$return_data['backorders'] = 'no';          // string       If managing stock, this controls if backorders are allowed. Options: no, notify and yes. Default is no.
+					if ($object->status_buy == 1) {
+						$return_data['backorders'] = !empty($object->array_options["options_ecommerceng_wc_backorders_{$this->site->id}_{$conf->entity}"]) ?
+							$object->array_options["options_ecommerceng_wc_backorders_{$this->site->id}_{$conf->entity}"] :
+							$this->site->parameters['product_backorders_if_purchasable'];
+					}
+					$object->array_options["options_ecommerceng_wc_backorders_{$this->site->id}_{$conf->entity}"] = $return_data['backorders'];
+				}
 			}
 		}
 
@@ -3692,10 +3957,10 @@ class eCommerceRemoteAccessWoocommerce
 	/**
 	 * Update the remote product
 	 *
-	 * @param   int     $remote_id  Id of product on remote ecommerce
-	 * @param   Product $object     Product object
+	 * @param   int     		$remote_id  Id of product on remote ecommerce
+	 * @param   Product 		$object     Product object
 	 *
-	 * @return  boolean             True or false
+	 * @return  boolean|array             	false or ['last_update_date' => xxx]
 	 */
 	public function updateRemoteProduct($remote_id, $object)
 	{
@@ -3708,9 +3973,10 @@ class eCommerceRemoteAccessWoocommerce
 		}
 
 		// Update extrafields infos
-		if (empty($conf->global->MAIN_EXTRAFIELDS_DISABLED)) $object->insertExtraFields();
+		if (empty(ecommercengGetGlobalString('MAIN_EXTRAFIELDS_DISABLED'))) $object->insertExtraFields();
 
 		$remote_translations = $datas['translates'];
+		$last_update_date = 0;
 
 		// Product
 		//--------------------
@@ -3725,6 +3991,7 @@ class eCommerceRemoteAccessWoocommerce
 				dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
 				return false;
 			}
+			$last_update_date = $this->getDateTimeFromGMTDateTime(!empty($result['date_modified_gmt']) ? $result['date_modified_gmt'] : $result['date_created_gmt'])->getTimestamp();
 
 			// Support for WPML (Update (others than name and descriptions) infos on translated post)
 			if (!empty($this->site->parameters['enable_product_plugin_wpml_support'])) {
@@ -3747,6 +4014,7 @@ class eCommerceRemoteAccessWoocommerce
 							dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
 							return false;
 						}
+						$last_update_date = $this->getDateTimeFromGMTDateTime(!empty($res['date_modified_gmt']) ? $res['date_modified_gmt'] : $res['date_created_gmt'])->getTimestamp();
 					}
 				}
 			}
@@ -3767,6 +4035,7 @@ class eCommerceRemoteAccessWoocommerce
 					dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
 					return false;
 				}
+				$last_update_date = $this->getDateTimeFromGMTDateTime(!empty($result['date_modified_gmt']) ? $result['date_modified_gmt'] : $result['date_created_gmt'])->getTimestamp();
 
 				// Support for WPML (Update (others than name and descriptions) infos on translated post)
 				if (!empty($this->site->parameters['enable_product_plugin_wpml_support'])) {
@@ -3797,6 +4066,7 @@ class eCommerceRemoteAccessWoocommerce
 								dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
 								return false;
 							}
+							$last_update_date = $this->getDateTimeFromGMTDateTime(!empty($res['date_modified_gmt']) ? $res['date_modified_gmt'] : $res['date_created_gmt'])->getTimestamp();
 						}
 					}
 				}
@@ -3804,7 +4074,7 @@ class eCommerceRemoteAccessWoocommerce
 		}
 
 		dol_syslog(__METHOD__ . ": end", LOG_DEBUG);
-		return true;
+		return [ 'last_update_date' => $last_update_date ];
 	}
 
 	/**
@@ -3842,6 +4112,13 @@ class eCommerceRemoteAccessWoocommerce
 		$isProductVariationHasOne = false;
 		$remote_product_id = $remote_id;
 		$remote_product_variation_id = 0;
+
+		// Custom mode: variations not supported
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1') && strpos($remote_id, '|') !== false) {
+			$this->errors[] = 'Product variations are not supported in ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1 mode (remote ID: ' . $remote_id . ', Dolibarr product ID: ' . $product->id . ')';
+			dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+			return false;
+		}
 
 		$product_variation_mode_all_to_one = !empty($this->site->parameters['product_variation_mode']) && $this->site->parameters['product_variation_mode'] == 'all_to_one';
 		if ($product_variation_mode_all_to_one) {
@@ -3939,7 +4216,7 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			// Delete all categories of the ecommerce
-			if (empty($conf->global->ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK)) {
+			if (empty(ecommercengGetGlobalString('ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK'))) {
 				require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 				$cat = new Categorie($this->db);
 				$cat_root = $this->site->fk_cat_product;
@@ -4110,8 +4387,8 @@ class eCommerceRemoteAccessWoocommerce
 		//$societe = new Societe($this->db);
 		//$societe->fetch($object->socid);
 
-		$billingName = (empty($conf->global->ECOMMERCENG_BILLING_CONTACT_NAME) ? 'Billing' : $conf->global->ECOMMERCENG_BILLING_CONTACT_NAME);      // Contact name treated as billing address.
-		$shippingName = (empty($conf->global->ECOMMERCENG_SHIPPING_CONTACT_NAME) ? 'Shipping' : $conf->global->ECOMMERCENG_SHIPPING_CONTACT_NAME);  // Contact name treated as shipping address.
+		$billingName = (ecommercengGetGlobalString('ECOMMERCENG_BILLING_CONTACT_NAME') ?: 'Billing');      // Contact name treated as billing address.
+		$shippingName = (ecommercengGetGlobalString('ECOMMERCENG_SHIPPING_CONTACT_NAME') ?: 'Shipping');  // Contact name treated as shipping address.
 
 		if ($object->lastname == $billingName) {
 			$address = explode("\n", $object->address);
@@ -4180,9 +4457,7 @@ class eCommerceRemoteAccessWoocommerce
 
 		$this->errors = array();
 		$status = '';
-		if (isset($this->site->parameters['order_status_dtoe'][$object->statut]['selected']))
-			$status = $this->site->parameters['order_status_dtoe'][$object->statut]['selected'];
-		elseif (isset($this->site->parameters['order_status_dtoe'][$object->statut]))
+		if (isset($this->site->parameters['order_status_dtoe'][$object->statut]))
 			$status = $this->site->parameters['order_status_dtoe'][$object->statut];
 
 		if (!empty($status)) {
@@ -4299,26 +4574,64 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Create product from Dolibarr product ID {$object->id} for site ID {$this->site->id}", LOG_DEBUG);
 		global $conf, $langs, $user;
 
-		$this->errors = array();
-		$filters = ['sku' => $object->ref];
-		$results = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, "products", [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
-		if (!isset($results) && $status_code != 404) {
-			$this->errors[] = $langs->trans('ECommerceWoocommerceCheckRemoteProductExist', $object->ref, $this->site->name);
-			$this->errors[] = $this->client->errorsToString();
-			dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
-			return false;
+		// TODO Add hook search product
+		if (getDolGlobalString('ECOMMERCENG_SYNCHRO_PRODUCT_MODE_CUSTOM_1')) {
+			$idxPage = 1;
+			$per_page = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
+
+			$this->errors = array();
+			$filters = [
+				'search' => $object->ref,
+				'per_page' => $per_page,
+				'orderby' => 'id',
+			];
+			$new_results = [];
+			do {
+				$filters['page'] = $idxPage++;
+				$results = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, "products", [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
+				if (!isset($results) && $status_code != 404) {
+					$this->errors[] = $langs->trans('ECommerceWoocommerceCheckRemoteProductExist', $object->ref, $this->site->name);
+					$this->errors[] = $this->client->errorsToString();
+					dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+					return false;
+				}
+				$results = isset($results['products']) ? $results['products'] : (is_array($results) ? $results : []);
+				if (is_array($results) && count($results) > 0) {
+					foreach ($results as $value) {
+						if ($value['name'] == $object->ref) {
+							$new_results[] = $value;
+						}
+					}
+				}
+			} while (is_array($results) && count($results) == $per_page);
+			$results = $new_results;
+		} else {
+			$this->errors = array();
+			$filters = ['sku' => $object->ref];
+			$results = $this->client->sendToApi(eCommerceClientApi::METHOD_GET, "products", [GuzzleHttp\RequestOptions::QUERY => $filters], false, $status_code);
+			if (!isset($results) && $status_code != 404) {
+				$this->errors[] = $langs->trans('ECommerceWoocommerceCheckRemoteProductExist', $object->ref, $this->site->name);
+				$this->errors[] = $this->client->errorsToString();
+				dol_syslog(__METHOD__ . ': Error:' . $this->errorsToString(), LOG_ERR);
+				return false;
+			}
+			$results = isset($results['products']) ? $results['products'] : (is_array($results) ? $results : []);
 		}
-		$results = isset($results['products']) ? $results['products'] : (is_array($results) ? $results : []);
 
 		$remote_id = '';
 		$remote_url = '';
 		$remote_language = '';
+		$last_update_date = 0;
 		if (is_array($results) && count($results) > 0) {
 			$remote_id = (!empty($results[0]['parent_id']) ? $results[0]['parent_id'] . '|' : '') . $results[0]['id'];
 			$remote_url = $results[0]['permalink'];
 			if (!empty($this->site->parameters['enable_product_plugin_wpml_support'])) $remote_language = $results[0]['language'];
-			if (!$this->updateRemoteProduct($remote_id, $object))
+			$result = $this->updateRemoteProduct($remote_id, $object);
+			if (!$result) {
 				return false;
+			} else {
+				$last_update_date = $result['last_update_date'];
+			}
 		} else {
 			$datas = $this->convertObjectIntoProductData('', $object);
 			if (empty($datas)) {
@@ -4326,7 +4639,7 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			// Update extrafields infos
-			if (empty($conf->global->MAIN_EXTRAFIELDS_DISABLED)) $object->insertExtraFields();
+			if (empty(ecommercengGetGlobalString('MAIN_EXTRAFIELDS_DISABLED'))) $object->insertExtraFields();
 
 			// Product
 			//--------------------
@@ -4344,11 +4657,12 @@ class eCommerceRemoteAccessWoocommerce
 				$remote_id = $result['id'];
 				$remote_url = $result['permalink'];
 				if (!empty($this->site->parameters['enable_product_plugin_wpml_support'])) $remote_language = $result['language'];
+				$last_update_date = $this->getDateTimeFromGMTDateTime(!empty($result['date_modified_gmt']) ? $result['date_modified_gmt'] : $result['date_created_gmt'])->getTimestamp();
 			}
 		}
 
 		dol_syslog(__METHOD__ . ": end", LOG_DEBUG);
-		return array('remote_id' => $remote_id, 'remote_url' => $remote_url, 'language' => $remote_language);
+		return array('remote_id' => $remote_id, 'remote_url' => $remote_url, 'language' => $remote_language, 'last_update_date' => $last_update_date);
 	}
 
 	/**
@@ -4392,7 +4706,7 @@ class eCommerceRemoteAccessWoocommerce
 		// Create categories on Woocommerce
 		$countCreated = 0;
 		$cats_id_remote_id = array();
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_BATCH) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_BATCH, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_BATCH', 100), 100);
 		foreach ($cats_by_level as $lvl => $group) {
 			foreach ($group as $key => $categoryData) {
 				if (isset($cats_id_remote_id[$categoryData['parent']])) {
@@ -4467,7 +4781,7 @@ class eCommerceRemoteAccessWoocommerce
 		require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 		$product_static = new Product($this->db);
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_BATCH) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_BATCH, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_BATCH', 100), 100);
 
 		// Get data to send
 		$product_sku_id = array();
@@ -4485,7 +4799,7 @@ class eCommerceRemoteAccessWoocommerce
 				}
 
 				// Update extrafields infos
-				if (empty($conf->global->MAIN_EXTRAFIELDS_DISABLED)) $product_static->insertExtraFields();
+				if (empty(ecommercengGetGlobalString('MAIN_EXTRAFIELDS_DISABLED'))) $product_static->insertExtraFields();
 
 				$to_be_created = $batch_infos['type'] == 'create';
 
@@ -4660,6 +4974,7 @@ class eCommerceRemoteAccessWoocommerce
 		$productSynchPrice = isset($this->site->parameters['product_synch_price']) ? $this->site->parameters['product_synch_price'] : 'regular';
 		$productImageSynchDirection = isset($this->site->parameters['product_synch_direction']['image']) ? $this->site->parameters['product_synch_direction']['image'] : '';
 		$productRefSynchDirection = isset($this->site->parameters['product_synch_direction']['ref']) ? $this->site->parameters['product_synch_direction']['ref'] : '';
+		$productPriceSynchDirection = isset($this->site->parameters['product_synch_direction']['price']) ? $this->site->parameters['product_synch_direction']['price'] : '';
 		$productDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['description']) ? $this->site->parameters['product_synch_direction']['description'] : '';
 		$productShortDescriptionSynchDirection = isset($this->site->parameters['product_synch_direction']['short_description']) ? $this->site->parameters['product_synch_direction']['short_description'] : '';
 		$productWeightSynchDirection = isset($this->site->parameters['product_synch_direction']['weight']) ? $this->site->parameters['product_synch_direction']['weight'] : '';
@@ -4690,12 +5005,12 @@ class eCommerceRemoteAccessWoocommerce
 
 				// Convert Weight
 				$from_unit = (int) $product_static->weight_units;
-				$to_unit = isset($this->site->parameters['product_weight_units']) ? (int) $this->site->parameters['product_weight_units'] : (empty($conf->global->MAIN_WEIGHT_DEFAULT_UNIT) ? 0 : (int) $conf->global->MAIN_WEIGHT_DEFAULT_UNIT);
+				$to_unit = isset($this->site->parameters['product_weight_units']) ? (int) $this->site->parameters['product_weight_units'] : (ecommercengGetGlobalInt('MAIN_WEIGHT_DEFAULT_UNIT'));
 				$totalWeight = weight_convert((double) $product_static->weight, $from_unit, $to_unit);
 
 				// Price
 				$error_price = 0;
-				if (!empty($conf->global->PRODUIT_MULTIPRICES)) {
+				if (!empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 					$price_level = !empty($this->site->price_level) ? $this->site->price_level : 1;
 					if ($this->site->ecommerce_price_type == 'TTC') {
 						if ($product_static->multiprices_base_type[$price_level] == 'TTC') {
@@ -4772,7 +5087,7 @@ class eCommerceRemoteAccessWoocommerce
 //
 //                    // Product - Images properties
 //                    $entity = isset($product_static->entity) ? $product_static->entity : $conf->entity;
-//                    if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+//                    if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 //                        if ($product_static->type == Product::TYPE_PRODUCT) {
 //                            $dir = $conf->product->multidir_output[$entity] . '/' . substr(substr("000" . $product_static->id, -2), 1, 1) . '/' . substr(substr("000" . $product_static->id, -2), 0, 1) . '/' . $product_static->id . "/photos/";
 //                        } else {
@@ -4934,7 +5249,7 @@ class eCommerceRemoteAccessWoocommerce
 					//'description' => (!empty($description) ? $description : $product_static->description),                    // string		Product description.
 					//'short_description' => $product_static->array_options["options_ecommerceng_short_description_{$conf->entity}"],                                      // string		Product short description.
 					//'sku' => $sku,                            // string		Unique identifier.
-					'regular_price' => $productSynchPrice == 'regular' ? $price : $regular_price,                          // string		Product regular price.
+					//'regular_price' => $productSynchPrice == 'regular' ? $price : $regular_price,                          // string		Product regular price.
 					//'sale_price' => $productSynchPrice == 'selling' ? $price : $sale_price,                                      // string		Product sale price.
 					//'date_on_sale_from'     => '',                                      // date-time	Start date of sale price, in the site’s timezone.
 					//'date_on_sale_from_gmt' => '',                                      // date-time	Start date of sale price, as GMT.
@@ -4971,6 +5286,9 @@ class eCommerceRemoteAccessWoocommerce
 					//'meta_data'             => $meta_data,                              // array		Meta data. See Product - Meta data properties
 				];
 
+				if ($productPriceSynchDirection == 'dtoe' || $productPriceSynchDirection == 'all') {
+					$productData['regular_price'] = $productSynchPrice == 'regular' ? $price : $regular_price;
+				}
 				if ($productImageSynchDirection == 'dtoe' || $productImageSynchDirection == 'all') {
 					$productData['images'] = $images;
 				}
@@ -5040,7 +5358,7 @@ class eCommerceRemoteAccessWoocommerce
 		}
 
 		$prods_id_remote_id = array();
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_BATCH) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_BATCH, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_BATCH', 100), 100);
 
 		// Create products on Woocommerce
 		$requestGroups = $this->getRequestGroups($products, $nb_max_by_request);
@@ -5330,7 +5648,7 @@ class eCommerceRemoteAccessWoocommerce
 			}
 
 			if ($tax_rate == '') {
-				$tax_rate = !empty($conf->global->ECOMMERCE_WOOCOMMERCE_DEFAULT_TVA) ? $conf->global->ECOMMERCE_WOOCOMMERCE_DEFAULT_TVA : 0;
+				$tax_rate = ecommercengGetGlobalString('ECOMMERCE_WOOCOMMERCE_DEFAULT_TVA') ?: 0;
 			}
 		}
 
@@ -5425,7 +5743,7 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Retrieve all Woocommerce attributes", LOG_DEBUG);
 		global $conf, $langs;
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		$attributes_list = [];
 		$idxPage = 1;
@@ -5463,7 +5781,7 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Retrieve all Woocommerce terms of a attribute", LOG_DEBUG);
 		global $conf, $langs;
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		$terms_list = [];
 		$idxPage = 1;
@@ -5528,7 +5846,7 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Retrieve all Woocommerce tax classes", LOG_DEBUG);
 		global $conf, $langs;
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		$taxClassesTable = [];
 		$idxPage = 1;
@@ -5566,7 +5884,7 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Retrieve all Woocommerce payment gateways", LOG_DEBUG);
 		global $conf, $langs;
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		$paymentGatewaysTable = [];
 		$idxPage = 1;
@@ -5723,7 +6041,7 @@ class eCommerceRemoteAccessWoocommerce
 		dol_syslog(__METHOD__ . ": Retrieve all Woocommerce payment gateways", LOG_DEBUG);
 		global $langs, $conf;
 
-		$nb_max_by_request = empty($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL) ? 100 : min($conf->global->ECOMMERCENG_MAXSIZE_MULTICALL, 100);
+		$nb_max_by_request = min(ecommercengGetGlobalInt('ECOMMERCENG_MAXSIZE_MULTICALL', 100), 100);
 
 		require_once DOL_DOCUMENT_ROOT . '/includes/OAuth/bootstrap.php';
 		$uriFactory = new \OAuth\Common\Http\Uri\UriFactory();

@@ -56,6 +56,7 @@ $res=0;
 if (! $res && file_exists("../../master.inc.php")) $res=@include '../../master.inc.php';			// to work if your module directory is into a subdir of root htdocs directory
 if (! $res && file_exists("../../../master.inc.php")) $res=@include '../../../master.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
@@ -173,7 +174,7 @@ function activateShareProductImages($db, $user, $product_id, $extensions)
 	if ($object->id == $product_id) {
 		// Product - Images properties
 		$entity = isset($object->entity) ? $object->entity : $conf->entity;
-		if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+		if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 			if ($object->type == Product::TYPE_PRODUCT) {
 				$dir = $conf->product->multidir_output[$entity] . '/' . substr(substr("000" . $object->id, -2), 1, 1) . '/' . substr(substr("000" . $object->id, -2), 0, 1) . '/' . $object->id . "/photos/";
 			} else {
@@ -203,7 +204,7 @@ function activateShareProductImages($db, $user, $product_id, $extensions)
 
 		// Build file list
 		$filearray = dol_dir_list($dir, "files", 0, '', '(\.meta|_preview.*\.png)$', 'position_name', SORT_ASC, 1);
-		if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO)) {    // For backward compatiblity, we scan also old dirs
+		if (!empty(ecommercengGetGlobalString('PRODUCT_USE_OLD_PATH_FOR_PHOTO'))) {    // For backward compatiblity, we scan also old dirs
 			$filearrayold = dol_dir_list($dir, "files", 0, '', '(\.meta|_preview.*\.png)$', 'position_name', SORT_ASC, 1);
 			$filearray = array_merge($filearray, $filearrayold);
 		}

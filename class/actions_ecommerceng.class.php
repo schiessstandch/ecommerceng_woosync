@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/business/eCommerceSynchro.class.php');
 dol_include_once("/ecommerceng/lib/eCommerce.lib.php");
 
@@ -109,7 +110,7 @@ class ActionsECommerceNg
 				}
 
 				// Delete all categories of the ecommerce
-				if (!$error && empty($conf->global->ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK)) {
+				if (!$error && empty(ecommercengGetGlobalString('ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK'))) {
 					$eCommerceSite = new eCommerceSite($object->db);
 					if ($eCommerceSite->fetch($site_id) > 0) {
 						require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
@@ -146,6 +147,31 @@ class ActionsECommerceNg
 				} else {
 					$object->db->commit();
 				}
+			}
+		} elseif (in_array('ordercard', $contexts)) {
+			$confirm = GETPOST('confirm', 'alpha');
+
+			if ($action == 'confirm_unlink_order_to_ecommerce' && $confirm == 'yes') {
+				// An order is linked to one and only one site: retrieve it automatically
+				$site_id = $this->getOrderLinkedSiteId($object);
+				if ($site_id > 0) {
+					dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
+					$eCommerceSite = new eCommerceSite($object->db);
+					if ($eCommerceSite->fetch($site_id) > 0) {
+						$synchro = new eCommerceSynchro($object->db, $eCommerceSite);
+						if ($synchro->unlinkOrder($site_id, $object->id) < 0) {
+							setEventMessages($synchro->error, $synchro->errors, 'errors');
+							$action = '';
+							return -1;
+						} else {
+							setEventMessage($langs->trans('EcommerceNGOrderUnlinked'));
+						}
+					} else {
+						setEventMessages($eCommerceSite->error, $eCommerceSite->errors, 'errors');
+					}
+				}
+
+				$action = '';
 			}
 		} elseif (in_array('thirdpartycard', $contexts)) {
 			$confirm = GETPOST('confirm', 'alpha');
@@ -235,7 +261,7 @@ class ActionsECommerceNg
 		$contexts = explode(':', $parameters['context']);
 
 		if (in_array('productcard', $contexts)) {
-			if ($user->rights->ecommerceng->write) {
+			if (ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 				// Site list
 				$sites = $this->getProductLinkedSite($object);
 				if (count($sites) > 0) {
@@ -261,7 +287,7 @@ class ActionsECommerceNg
 				}
 			}
 		} elseif (in_array('thirdpartycard', $contexts)) {
-			if ($user->rights->ecommerceng->write) {
+			if (ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
 				// Site list
 				$sites = $this->getCompanyLinkedSite($object);
 				if (count($sites) > 0) {
@@ -284,6 +310,19 @@ class ActionsECommerceNg
 					$site_ids = array_keys($sites);
 					$params = count($sites) > 1 ? '&action=update_company_from_ecommerce' : '&action=confirm_update_company_from_ecommerce&confirm=yes&siteid=' . $site_ids[0];
 					print '<div class="inline-block divButAction"><a class="butAction" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . $params . '&token=' . ecommercengNewToken() . '">' . $langs->trans("EcommerceUpdateCompanyFromECommerce") . '</a></div>';
+				}
+			}
+		} elseif (in_array('ordercard', $contexts)) {
+			if (ecommercengUserHasRight($user, 'ecommerceng', 'write')) {
+				// An order is linked to one and only one site: no site selector needed
+				if ($this->getOrderLinkedSiteId($object) > 0) {
+					if ($action == 'unlink_order_to_ecommerce') {
+						require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
+						$form = new Form($object->db);
+						print $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('EcommerceNGUnlinkOrderToECommerce'), $langs->trans('EcommerceNGConfirmUnlinkOrderToECommerce', $object->ref), 'confirm_unlink_order_to_ecommerce', '', 'yes', 1);
+					}
+
+					print '<div class="inline-block divButAction"><a class="butAction" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=unlink_order_to_ecommerce&token=' . ecommercengNewToken() . '">' . $langs->trans("EcommerceNGUnlinkOrderToECommerce") . '</a></div>';
 				}
 			}
 		}
@@ -318,7 +357,7 @@ class ActionsECommerceNg
 				print '});';
 				print '</script>';
 			}
-		} elseif (!empty(array_intersect(['categorycard', 'productcard', 'thirdpartycard', 'contactcard'], $contexts))) {
+		} elseif (!empty(array_intersect(['categorycard', 'productcard', 'thirdpartycard', 'contactcard', 'ordercard'], $contexts))) {
 			if (!in_array($action, ['create', 'edit']) && !empty($object->id)) {
 				if ($object->element == 'category') {
 					$table_nme = 'category';
@@ -329,6 +368,9 @@ class ActionsECommerceNg
 				} elseif ($object->element == 'societe') {
 					$table_nme = 'societe';
 					$field_name = "fk_societe";
+				} elseif ($object->element == 'commande') {
+					$table_nme = 'commande';
+					$field_name = "fk_commande";
 				} else {
 					$table_nme = 'socpeople';
 					$field_name = "fk_socpeople";
@@ -380,7 +422,7 @@ class ActionsECommerceNg
 		if ((in_array('expeditioncard', $contexts) && ($action == 'confirm_valid' || $action == 'builddoc')) ||
 			(in_array('invoicecard', $contexts) && ($action == 'confirm_valid' || $action == 'builddoc'))
 		) {
-			if (!empty($conf->global->ECOMMERCENG_ENABLE_SEND_FILE_TO_ORDER)) {
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_SEND_FILE_TO_ORDER'))) {
 				$commande_id = 0;
 				$object_src = $parameters['object'];
 				$object_src->fetchObjectLinked('', 'commande', $object_src->id, $object_src->element);
@@ -456,7 +498,7 @@ class ActionsECommerceNg
 		if ((in_array('expeditioncard', $contexts) && ($action == 'confirm_valid' || $action == 'builddoc')) ||
 			(in_array('invoicecard', $contexts) && ($action == 'confirm_valid' || $action == 'builddoc'))
 		) {
-			if (!empty($conf->global->ECOMMERCENG_ENABLE_SEND_FILE_TO_ORDER)) {
+			if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_SEND_FILE_TO_ORDER'))) {
 				$commande_id = 0;
 				$object_src = $parameters['object'];
 				$object_src->fetchObjectLinked('', 'commande', $object_src->id, $object_src->element);
@@ -711,6 +753,32 @@ class ActionsECommerceNg
 	}
 
 	/**
+	 * Get the ECommerce site id linked to the order (an order is linked to one and only one site)
+	 *
+	 * @param   Commande    $object    Order object
+	 * @return  int                    Site id linked to the order, 0 if none
+	 */
+	private function getOrderLinkedSiteId(&$object)
+	{
+		$site_id = 0;
+
+		if (!empty($object->id)) {
+			$sql = "SELECT fk_site FROM " . MAIN_DB_PREFIX . "ecommerce_commande WHERE fk_commande = " . ((int) $object->id);
+			$resql = $this->db->query($sql);
+			if ($resql) {
+				if ($obj = $this->db->fetch_object($resql)) {
+					$site_id = (int) $obj->fk_site;
+				}
+				$this->db->free($resql);
+			} else {
+				setEventMessages($this->db->lasterror(), null, 'errors');
+			}
+		}
+
+		return $site_id;
+	}
+
+	/**
 	 * Test if product is linked with a ECommerce
 	 *
 	 * @param   Product     $object    Product object
@@ -758,7 +826,7 @@ class ActionsECommerceNg
 			$resPrints = '';
 			if ($search_ec_total_delta != '') $resPrints .= '&search_ec_total_delta=' . urlencode($search_ec_total_delta);
 			$this->resprints = $resPrints;
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			$search_ec_remote_id = GETPOST('search_ec_remote_id', 'alphanohtml');
 
 			$resPrints = '';
@@ -785,7 +853,7 @@ class ActionsECommerceNg
 		if (in_array('invoicelist', $contexts)) {
 			$resPrints = ', ABS(f.total_ttc - (f.total_ht + f.total_tva)) AS ec_total_delta';
 			$this->resprints = $resPrints;
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			global $arrayfields, $langs;
 			$langs->load('ecommerceng@ecommerceng');
 
@@ -811,13 +879,16 @@ class ActionsECommerceNg
 	{
 		$contexts = explode(':', $parameters['context']);
 
-		if (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		if (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			if ($object->element == 'product') {
 				$table_nme = 'view_ecommerce_product_remote_ids';
 				$field_object = 'p.rowid';
 			} elseif ($object->element == 'societe') {
 				$table_nme = 'view_ecommerce_thirdparty_remote_ids';
 				$field_object = 's.rowid';
+			} elseif ($object->element == 'commande') {
+				$table_nme = 'view_ecommerce_order_remote_ids';
+				$field_object = 'c.rowid';
 			} else {
 				$table_nme = 'view_ecommerce_contact_remote_ids';
 				$field_object = 'p.rowid';
@@ -851,7 +922,7 @@ class ActionsECommerceNg
 			if ($search_ec_total_delta) $out .= natural_search('ABS(f.total_ttc - (f.total_ht + f.total_tva))', $search_ec_total_delta, 1);
 
 			$this->resprints = $out;
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			$search_ec_remote_id = GETPOST('search_ec_remote_id', 'alphanohtml');
 
 			if (!self::$join_table_remote_id_set) {
@@ -861,6 +932,8 @@ class ActionsECommerceNg
 					$sql = str_replace(" FROM " . MAIN_DB_PREFIX . "socpeople as p", " FROM " . MAIN_DB_PREFIX . "socpeople as p LEFT JOIN " . MAIN_DB_PREFIX . "view_ecommerce_contact_remote_ids AS eri ON eri.fk_object = p.rowid", $sql);
 				} elseif (count(array_intersect(['thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist'], $contexts)) > 0) {
 					$sql = str_replace(" FROM " . MAIN_DB_PREFIX . "societe as s", " FROM " . MAIN_DB_PREFIX . "societe as s LEFT JOIN " . MAIN_DB_PREFIX . "view_ecommerce_thirdparty_remote_ids AS eri ON eri.fk_object = s.rowid", $sql);
+				} elseif (in_array('orderlist', $contexts)) {
+					$sql = str_replace(" FROM " . MAIN_DB_PREFIX . "commande as c", " FROM " . MAIN_DB_PREFIX . "commande as c LEFT JOIN " . MAIN_DB_PREFIX . "view_ecommerce_order_remote_ids AS eri ON eri.fk_object = c.rowid", $sql);
 				}
 			}
 
@@ -870,10 +943,14 @@ class ActionsECommerceNg
 					$table_nme = 'product';
 					$field_name = "fk_product";
 					$field_object = 'p.rowid';
-				} elseif ($object->element == 'societe') {
+				} elseif ($object->element == 'societe' || (empty($object->element) && count(array_intersect(['thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist'], $contexts)) > 0)) {
 					$table_nme = 'societe';
 					$field_name = "fk_societe";
 					$field_object = 's.rowid';
+				} elseif ($object->element == 'commande' || (empty($object->element) && in_array('orderlist', $contexts))) {
+					$table_nme = 'commande';
+					$field_name = "fk_commande";
+					$field_object = 'c.rowid';
 				} else {
 					$table_nme = 'socpeople';
 					$field_name = "fk_socpeople";
@@ -917,7 +994,7 @@ class ActionsECommerceNg
 				print '<input class="flat" type="text" name="search_ec_total_delta" size="8" value="' . dol_escape_htmltag($search_ec_total_delta) . '">';
 				print '</td>';
 			}
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			$arrayfields = $parameters['arrayfields'];
 
 			if (!empty($arrayfields['eri.remote_id']['checked'])) {
@@ -954,7 +1031,7 @@ class ActionsECommerceNg
 			if (!empty($arrayfields['ec_total_delta']['checked'])) {
 				print_liste_field_titre($arrayfields['ec_total_delta']['label'], $_SERVER['PHP_SELF'], '', '', $param, '', $sortfield, $sortorder, 'right ');
 			}
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			$param = $parameters['param'];
 			$sortfield = $parameters['sortfield'];
 			$sortorder = $parameters['sortorder'];
@@ -990,7 +1067,7 @@ class ActionsECommerceNg
 				print price(price2num($obj->ec_total_delta));
 				print '</td>';
 			}
-		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist' ], $contexts))) {
+		} elseif (!empty(array_intersect([ 'productservicelist', 'thirdpartylist', 'customerlist', 'prospectlist', 'poslist', 'supplierlist', 'contactlist', 'contactprospectlist', 'contactcustomerlist', 'contactsupplierlist', 'contactotherlist', 'orderlist' ], $contexts))) {
 			$obj = $parameters['obj'];
 			$arrayfields = $parameters['arrayfields'];
 
@@ -1024,18 +1101,20 @@ class ActionsECommerceNg
 				require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 				$product = new Product($this->db);
 
-				$result = $product->fetch($fk_product);
-				if ($result < 0) {
-					$this->errors[] = $product->errorsToString();
-					return -1;
-				} elseif ($result == 0) {
-					return 1;
-				}
+				if (!property_exists($product, 'stockable_product')) {
+					$result = $product->fetch($fk_product);
+					if ($result < 0) {
+						$this->errors[] = $product->errorsToString();
+						return -1;
+					} elseif ($result == 0) {
+						return 1;
+					}
 
-				if (isset($product->array_options['options_ecommerceng_stockable_product']) &&
-					$product->array_options['options_ecommerceng_stockable_product'] == 0
-				) {
-					return 1;
+					if (isset($product->array_options['options_ecommerceng_stockable_product']) &&
+						$product->array_options['options_ecommerceng_stockable_product'] == 0
+					) {
+						return 1;
+					}
 				}
 			}
 		}

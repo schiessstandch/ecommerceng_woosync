@@ -56,6 +56,7 @@ $res=0;
 if (! $res && file_exists("../../master.inc.php")) $res=@include '../../master.inc.php';			// to work if your module directory is into a subdir of root htdocs directory
 if (! $res && file_exists("../../../master.inc.php")) $res=@include '../../../master.inc.php';		// to work if your module directory is into a subdir of root htdocs directory
 if (! $res) die("Include of main fails");
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/stock/class/mouvementstock.class.php';
 dol_include_once('/ecommerceng/class/data/eCommerceSite.class.php');
@@ -115,7 +116,7 @@ if ($max_sites > 0) {
 			continue;
 		}
 
-		if (!empty($conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER) && $conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER == 1) {
+		if (ecommercengGetGlobalInt('STOCK_CALCULATE_ON_VALIDATE_ORDER') == 1) {
 			$warehouse_id = isset($site->parameters['order_actions']['valid_order_fk_warehouse']) && $site->parameters['order_actions']['valid_order_fk_warehouse'] > 0 ? $site->parameters['order_actions']['valid_order_fk_warehouse'] : 0;
 			if (empty($warehouse_id)) {
 				print "Warning: Warehouse on valid order not configured.\n";

@@ -22,6 +22,7 @@
  * Class for synchronize remote sites with Dolibarr
  */
 
+dol_include_once('/ecommerceng/lib/compatibility.lib.php');
 dol_include_once('/ecommerceng/class/data/eCommerceRemoteAccess.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceCommande.class.php');
 dol_include_once('/ecommerceng/class/data/eCommerceFacture.class.php');
@@ -175,6 +176,56 @@ class eCommerceSynchro
 		}
 
 		return -1;
+	}
+
+	/**
+	 * Build warning messages for remote IDs not found on the remote site, enriched with Dolibarr ref and ID.
+	 * Uses a single SQL query with JOIN for performance.
+	 *
+	 * @param	array	$missing_remote_ids		List of missing remote IDs
+	 * @param	string	$element_type			Element type: 'product', 'societe', 'commande'
+	 * @return	array							List of warning message strings
+	 */
+	public function buildMissingRemoteWarnings($missing_remote_ids, $element_type)
+	{
+		$warnings = array();
+		if (empty($missing_remote_ids)) return $warnings;
+
+		$map = array(
+			'product' => array('link_table' => 'ecommerce_product', 'link_fk' => 'fk_product', 'element_table' => 'product', 'element_ref' => 'ref'),
+			'societe' => array('link_table' => 'ecommerce_societe', 'link_fk' => 'fk_societe', 'element_table' => 'societe', 'element_ref' => 'nom'),
+			'commande' => array('link_table' => 'ecommerce_commande', 'link_fk' => 'fk_commande', 'element_table' => 'commande', 'element_ref' => 'ref'),
+		);
+		if (!isset($map[$element_type])) return $warnings;
+		$m = $map[$element_type];
+
+		$in_values = array();
+		foreach ($missing_remote_ids as $rid) {
+			$in_values[] = "'" . $this->db->escape($rid) . "'";
+		}
+
+		$sql = "SELECT el.remote_id, e.rowid AS element_id, e." . $m['element_ref'] . " AS element_ref";
+		$sql .= " FROM " . MAIN_DB_PREFIX . $m['link_table'] . " el";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . $m['element_table'] . " e ON el." . $m['link_fk'] . " = e.rowid";
+		$sql .= " WHERE el.remote_id IN (" . implode(',', $in_values) . ")";
+		$sql .= " AND el.fk_site = " . (int) $this->eCommerceSite->id;
+
+		$resql = $this->db->query($sql);
+		if ($resql) {
+			$found = array();
+			while ($obj = $this->db->fetch_object($resql)) {
+				$found[$obj->remote_id] = $obj;
+			}
+			foreach ($missing_remote_ids as $rid) {
+				if (isset($found[$rid]) && !empty($found[$rid]->element_ref)) {
+					$warnings[] = $this->langs->trans('ECommerceWarningRemoteObjectNotFoundEnriched', $rid, $found[$rid]->element_ref, $found[$rid]->element_id);
+				} else {
+					$warnings[] = $this->langs->trans('ECommerceWarningRemoteObjectNotFound', $rid);
+				}
+			}
+		}
+
+		return $warnings;
 	}
 
 	/**
@@ -1036,27 +1087,43 @@ class eCommerceSynchro
 	/**
 	 * Synchronize societe to update
 	 *
-	 * @param   int     $from_date      Synchronize from date
-	 * @param   int     $to_date       	Synchronize to date
-	 * @param   array   $remote_ids 	Force to synchronize the specified remote_ids
-	 * @param   int     $toNb       	Max nb to synch
-	 * @return  int                 	>0 if OK, <0 if KO
+	 * @param   array   $remote_ids 			Force to synchronize the specified remote_ids
+	 * @param   int     $toNb       			Max nb to synch
+	 * @param	bool	$force_update			Force update even if update date not more recent
+	 * @return  int                 			>0 if OK, <0 if KO
 	 */
-	public function synchSociete($remote_ids = array(), $toNb = 0)
+	public function synchSociete($remote_ids = array(), $toNb = 0, $force_update = false, $page = 0, $only_linked = false)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', page=' . $page . ', only_linked=' . $only_linked, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
 
-		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}");
+		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}, page: {$page}, only_linked: {$only_linked}");
 
 		try {
-			$from_date = isset($this->fromDate) ? $this->fromDate : $this->getSocieteLastUpdateDate();
+			// In page mode (AJAX), the endpoint resolves and freezes the date filter once and
+			// passes it explicitly (null = no lower bound), so use it verbatim instead of the
+			// sliding last-sync cursor — otherwise paginating by page number would skip records.
+			$from_date = $page > 0 ? $this->fromDate : (isset($this->fromDate) ? $this->fromDate : $this->getSocieteLastUpdateDate());
 			$to_date = $this->toDate;
+
+			if ($only_linked) {
+				$this->initECommerceSociete();
+				$linked_remote_ids = $this->eCommerceSociete->getAllRemoteIds($this->eCommerceSite->id);
+				if ($linked_remote_ids === -1) {
+					$this->errors[] = $this->eCommerceSociete->error;
+					eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
+					return -1;
+				}
+				$remote_ids = $linked_remote_ids;
+				$from_date = null;
+				$to_date = null;
+			}
+
 			if (!empty($remote_ids)) $toNb = count($remote_ids);
 
-			$result = $this->synchronizeCustomers($from_date, $to_date, $remote_ids, $toNb);
+			$result = $this->synchronizeCustomers($from_date, $to_date, $remote_ids, $toNb, false, true, $force_update, $page);
 
 			eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
 			return $result;
@@ -1204,24 +1271,42 @@ class eCommerceSynchro
 	/**
 	 * Synchronize product to update
 	 *
-	 * @param   array   $remote_ids 	Force to synchronize the specified remote_ids
-	 * @param   int     $toNb       	Max nb to synch
-	 * @return  int                 	>0 if OK, <0 if KO
+	 * @param   array   $remote_ids 			Force to synchronize the specified remote_ids
+	 * @param   int     $toNb       			Max nb to synch
+	 * @param	bool	$force_update			Force update even if update date not more recent
+	 * @return  int                 			>0 if OK, <0 if KO
 	 */
-	public function synchProduct($remote_ids = array(), $toNb = 0)
+	public function synchProduct($remote_ids = array(), $toNb = 0, $force_update = false, $page = 0, $only_linked = false)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', page=' . $page . ', only_linked=' . $only_linked, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
 
-		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}");
+		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}, page: {$page}, only_linked: {$only_linked}");
 		try {
-			$from_date = isset($this->fromDate) ? $this->fromDate : $this->getProductLastUpdateDate();
+			// In page mode (AJAX), the endpoint resolves and freezes the date filter once and
+			// passes it explicitly (null = no lower bound), so use it verbatim instead of the
+			// sliding last-sync cursor — otherwise paginating by page number would skip records.
+			$from_date = $page > 0 ? $this->fromDate : (isset($this->fromDate) ? $this->fromDate : $this->getProductLastUpdateDate());
 			$to_date = $this->toDate;
+
+			if ($only_linked) {
+				$this->initECommerceProduct();
+				$linked_remote_ids = $this->eCommerceProduct->getAllRemoteIds($this->eCommerceSite->id);
+				if ($linked_remote_ids === -1) {
+					$this->errors[] = $this->eCommerceProduct->error;
+					eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
+					return -1;
+				}
+				$remote_ids = $linked_remote_ids;
+				$from_date = null;
+				$to_date = null;
+			}
+
 			if (!empty($remote_ids)) $toNb = count($remote_ids);
 
-			$result = $this->synchronizeProducts($from_date, $to_date, $remote_ids, $toNb);
+			$result = $this->synchronizeProducts($from_date, $to_date, $remote_ids, $toNb, true, null, $force_update, $page);
 
 			eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
 			return $result;
@@ -1243,20 +1328,37 @@ class eCommerceSynchro
 	 * @param	bool	$dont_synchronize_products		Bypass the synchronization of the product of the order
 	 * @return  int                 					>0 if OK, <0 if KO
 	 */
-	public function synchCommande($remote_ids = array(), $toNb = 0, $dont_synchronize_products = false)
+	public function synchCommande($remote_ids = array(), $toNb = 0, $dont_synchronize_products = false, $page = 0, $only_linked = false)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', page=' . $page . ', only_linked=' . $only_linked, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
 
-		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}");
+		$stopwatch_id = eCommerceUtils::startAndLogStopwatch(__METHOD__ . " - remote_ids: " . json_encode($remote_ids). ", toNb: {$toNb}, page: {$page}, only_linked: {$only_linked}");
 		try {
-			$from_date = isset($this->fromDate) ? $this->fromDate : $this->getCommandeLastUpdateDate();
+			// In page mode (AJAX), the endpoint resolves and freezes the date filter once and
+			// passes it explicitly (null = no lower bound), so use it verbatim instead of the
+			// sliding last-sync cursor — otherwise paginating by page number would skip records.
+			$from_date = $page > 0 ? $this->fromDate : (isset($this->fromDate) ? $this->fromDate : $this->getCommandeLastUpdateDate());
 			$to_date = $this->toDate;
+
+			if ($only_linked) {
+				$this->initECommerceCommande();
+				$linked_remote_ids = $this->eCommerceCommande->getAllRemoteIds($this->eCommerceSite->id);
+				if ($linked_remote_ids === -1) {
+					$this->errors[] = $this->eCommerceCommande->error;
+					eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
+					return -1;
+				}
+				$remote_ids = $linked_remote_ids;
+				$from_date = null;
+				$to_date = null;
+			}
+
 			if (!empty($remote_ids)) $toNb = count($remote_ids);
 
-			$result = $this->synchronizeOrders($from_date, $to_date, $remote_ids, $toNb, true, $dont_synchronize_products);
+			$result = $this->synchronizeOrders($from_date, $to_date, $remote_ids, $toNb, true, $dont_synchronize_products, $page);
 
 			eCommerceUtils::stopAndLogStopwatch($stopwatch_id);
 			return $result;
@@ -1373,7 +1475,7 @@ class eCommerceSynchro
 									// Which target status ?
 									if ($factureArray['status'] == Facture::STATUS_VALIDATED) {
 										if ($dBFacture->statut != Facture::STATUS_VALIDATED) {
-											$dBFacture->setStatut(Facture::STATUS_VALIDATED, $dBFacture->id, $dBFacture->table_element);
+											$dBFacture->setStatut(Facture::STATUS_VALIDATED);
 										}
 									}
 									if ($factureArray['status'] == Facture::STATUS_ABANDONED) {
@@ -1441,7 +1543,7 @@ class eCommerceSynchro
 								$dBFacture->cond_reglement_id = $settlementTermsId;
 								$dBFacture->context['fromsyncofecommerceid'] = $this->eCommerceSite->id;
 								$dBFacture->note_private = "";
-								if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+								if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 									$dBFacture->note_private .= "Last eCommerce invoice received:\n" . dol_trunc(serialize(var_export($factureArray['remote_invoice'], true)), 65000);
 									$dBFacture->note_private .= "\n\n";
 									$dBFacture->note_private .= "Last eCommerce order received:\n" . dol_trunc(serialize(var_export($factureArray['remote_order'], true)), 65000);
@@ -1565,7 +1667,7 @@ class eCommerceSynchro
 								// Which target status ?
 								if ($factureArray['status'] == Facture::STATUS_VALIDATED) {
 									if ($dBFacture->statut != Facture::STATUS_VALIDATED) {
-										$dBFacture->setStatut(Facture::STATUS_VALIDATED, $dBFacture->id, $dBFacture->table_element);
+										$dBFacture->setStatut(Facture::STATUS_VALIDATED);
 									}
 								}
 								if ($factureArray['status'] == Facture::STATUS_ABANDONED) {
@@ -1859,6 +1961,7 @@ class eCommerceSynchro
 						} else {
 							$remote_id = $result['remote_id'];
 							$remote_language = $result['language'];
+							$last_update_date = $result['last_update_date'];
 
 							$product_static->url = $result['remote_url'];
 							$product_static->context['fromsyncofecommerceid'] = $this->eCommerceSite->id;
@@ -1877,7 +1980,7 @@ class eCommerceSynchro
 								$this->eCommerceProduct->fk_site = $this->eCommerceSite->id;
 								$this->eCommerceProduct->fk_product = $product_static->id;
 								$this->eCommerceProduct->lang = $remote_language;
-								$this->eCommerceProduct->last_update = dol_print_date($now, '%Y-%m-%d %H:%M:%S');
+								$this->eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
 								if ($this->eCommerceSite->stock_sync_direction == 'dolibarr2ecommerce') $this->eCommerceProduct->last_update_stock = $this->eCommerceProduct->last_update;
 								if ($this->eCommerceProduct->create($user) < 0) {
 									$error++;
@@ -1895,10 +1998,11 @@ class eCommerceSynchro
 							$this->error = $this->eCommerceRemoteAccess->error;
 							$this->errors = $this->eCommerceRemoteAccess->errors;
 						} else {
+							$last_update_date = $result['last_update_date'];
 							//eCommerce update link
 							$now = dol_now();
 							$this->eCommerceProduct->fetchByRemoteId($obj->remote_id, $this->eCommerceSite->id);
-							$this->eCommerceProduct->last_update = dol_print_date($now, '%Y-%m-%d %H:%M:%S');
+							$this->eCommerceProduct->last_update = dol_print_date(max($last_update_date, dol_now()), '%Y-%m-%d %H:%M:%S');
 							if ($this->eCommerceSite->stock_sync_direction == 'dolibarr2ecommerce') $this->eCommerceProduct->last_update_stock = $this->eCommerceProduct->last_update;
 							if ($this->eCommerceProduct->update($user) < 0) {
 								$error++;
@@ -2099,7 +2203,7 @@ class eCommerceSynchro
 			$this->db->begin();
 
 			// Remove all categories of the ecommerce on the products
-			if (empty($conf->global->ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK)) {
+			if (empty(ecommercengGetGlobalString('ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK'))) {
 				require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 				$c = new Categorie($this->db);
 				$all_cat_full_arbo = $c->get_full_arbo('product');
@@ -2346,12 +2450,12 @@ class eCommerceSynchro
 		// Clean parameters
 		$lastname = $contact->lastname ? trim($contact->lastname) : trim($contact->name);
 		$firstname = trim($contact->firstname);
-		if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 			$firstname = dol_ucwords(dol_strtolower($firstname));
 			$lastname = dol_strtoupper($lastname);
 		}
-		if (!empty($conf->global->MAIN_FIRST_TO_UPPER)) $lastname = ucwords($lastname);
-		if (!empty($conf->global->MAIN_FIRST_TO_UPPER)) $firstname = ucwords($firstname);
+		if (!empty(ecommercengGetGlobalString('MAIN_FIRST_TO_UPPER'))) $lastname = ucwords($lastname);
+		if (!empty(ecommercengGetGlobalString('MAIN_FIRST_TO_UPPER'))) $firstname = ucwords($firstname);
 		$socid = $contact->socid;
 		if (empty($socid)) $contact->socid = 0;
 		$email = trim($contact->email);
@@ -2523,9 +2627,9 @@ class eCommerceSynchro
 				$this->errors = array_merge(array($this->langs->trans('ECommerceErrorWhenConvertProductData', $raw_data['id'])), $this->errors);
 				$this->errors = array_merge($this->errors, $this->eCommerceRemoteAccess->errors);
 			} else {
-				$product_ref = dol_string_nospecial(trim($product_data['ref']));
+				$product_ref = dol_sanitizeFileName(dol_string_nospecial(trim($product_data['ref'])));
 				// if the ref not defined in the data provided
-				if (!empty($product_data['has_variations']) || (empty($product_ref) && (empty($conf->global->PRODUCT_CODEPRODUCT_ADDON) || $conf->global->PRODUCT_CODEPRODUCT_ADDON == 'mod_codeproduct_leopard'))) {
+				if (!empty($product_data['has_variations']) || (empty($product_ref) && (empty(ecommercengGetGlobalString('PRODUCT_CODEPRODUCT_ADDON')) || ecommercengGetGlobalString('PRODUCT_CODEPRODUCT_ADDON') == 'mod_codeproduct_leopard'))) {
 					$tmp = explode('|', $product_data['remote_id']);
 					if (count($tmp) > 2) {
 						$remote_id_to_synchronize = $product_data['remote_parent_id'];
@@ -2689,9 +2793,9 @@ class eCommerceSynchro
 	 * @param	bool	$force_update				Force update even if update date not more recent
 	 * @return	int									<0 if KO, >0 if OK
 	 */
-	public function synchronizeCustomers($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $only_not_synchronized = false, $success_log = true, $force_update = false)
+	public function synchronizeCustomers($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $only_not_synchronized = false, $success_log = true, $force_update = false, $page = 0)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', only_not_synchronized=' . $only_not_synchronized . ', force_update=' . $force_update, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', only_not_synchronized=' . $only_not_synchronized . ', force_update=' . $force_update . ', page=' . $page, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
@@ -2730,11 +2834,52 @@ class eCommerceSynchro
 
 				// Get list of customer data to synchronize
 				if (!$error) {
-					$customers_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrSociete($from_date, $to_date, $remote_ids_to_synchronize, $toNb);
+					$customers_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrSociete($from_date, $to_date, $remote_ids_to_synchronize, $toNb, $page);
 					if ($customers_data === false) {
 						$this->errors = array_merge($this->errors, $this->eCommerceRemoteAccess->errors);
 						$error++;
 					}
+				}
+
+				// Page mode: return enriched result
+				if ($page > 0 && !$error) {
+					$nb_success = 0;
+					$page_errors = array();
+					$page_warnings = array();
+
+					if (!empty($customers_data['customers'])) {
+						foreach ($customers_data['customers'] as $customer_data) {
+							// Stop early if client disconnected (AJAX cancel)
+							echo ' '; @ob_flush(); @flush();
+							if (connection_aborted()) break;
+
+							$result = $this->synchronizeCustomer($customer_data, $only_not_synchronized, $force_update);
+							if ($result < 0) {
+								$page_errors = array_merge($page_errors, $this->errors);
+								$this->errors = array();
+							} else {
+								$nb_success++;
+							}
+							if (!empty($this->warnings)) {
+								$page_warnings = array_merge($page_warnings, $this->warnings);
+								$this->warnings = array();
+							}
+						}
+					}
+
+					// Warn about remote customers not found on the site (with Dolibarr name and ID)
+					if (!empty($customers_data['missing_remote_ids'])) {
+						$page_warnings = array_merge($page_warnings, $this->buildMissingRemoteWarnings($customers_data['missing_remote_ids'], 'societe'));
+					}
+
+					return [
+						'total' => $customers_data['total'],
+						'fetched' => $customers_data['fetched'],
+						'success' => $nb_success,
+						'errors' => $page_errors,
+						'warnings' => $page_warnings,
+						'has_more' => $customers_data['has_more'],
+					];
 				}
 
 				if (!$error && !empty($customers_data)) {
@@ -2780,6 +2925,7 @@ class eCommerceSynchro
 
 		$this->error = '';
 		$this->errors = array();
+		$this->warnings = array();
 		$error = 0;
 
 		require_once DOL_DOCUMENT_ROOT . '/societe/class/societe.class.php';
@@ -2921,9 +3067,9 @@ class eCommerceSynchro
 							// Update third party
 							if ($third_party->id > 0) {
 								if (empty($this->eCommerceSite->parameters['dont_update_dolibarr_company'])) {
-									if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+									if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 										$third_party->note_private = dol_concatdesc($third_party->note_private, $this->langs->trans('ECommerceUpdateThirdPartyFromSiteNote', dol_print_date(dol_now(), 'dayhour'), $this->eCommerceSite->name, $customer_data['remote_id']));
-										if (!empty($conf->global->ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE)) {
+										if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE'))) {
 											$third_party->note_private = dol_concatdesc($third_party->note_private . " :", json_encode($customer_data['remote_datas']));
 										}
 									}
@@ -2934,13 +3080,18 @@ class eCommerceSynchro
 									if ($result < 0) {
 										$this->errors[] = $this->langs->trans('ECommerceErrorUpdateThirdParty', $third_party->id);
 									}
+								} else {
+									$result = $third_party->updateExtraField("ecommerceng_wc_role_{$this->eCommerceSite->id}_{$conf->entity}");
+									if ($result < 0) {
+										$this->errors[] = $this->langs->trans('ECommerceErrorUpdateThirdParty', $third_party->id);
+									}
 								}
 							} // Create third party
 							else {
 								$third_party->code_client = -1;            // Automatic code
 								$third_party->code_fournisseur = -1;        // Automatic code
 								$third_party->note_private = isset($customer_data['note']) ? $customer_data['note'] : "";
-								if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+								if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 									$third_party->note_private = dol_concatdesc($third_party->note_private, $this->langs->trans('ECommerceCreateThirdPartyFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($customer_data['remote_datas']));
 								}
 
@@ -2965,8 +3116,15 @@ class eCommerceSynchro
 							if ($this->eCommerceSite->fk_cat_societe > 0) {
 								require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 								$cat = new Categorie($this->db);
-								$cat->fetch($this->eCommerceSite->fk_cat_societe);
-								$cat->add_type($third_party, 'customer');
+								$categories = $cat->containing($third_party->id, 'customer', 'id');
+								$found_cat = false;
+								foreach ($categories as $cat_id) {
+									if ($cat_id == $this->eCommerceSite->fk_cat_societe) $found_cat = true;
+								}
+								if (!$found_cat) {
+									$cat->fetch($this->eCommerceSite->fk_cat_societe);
+									$cat->add_type($third_party, 'customer');
+								}
 							} else {
 								$this->errors[] = $this->langs->trans('ECommerceErrorThirdPartyCategoryNotConfigured', $this->eCommerceSite->id);
 								$error++;
@@ -3091,11 +3249,12 @@ class eCommerceSynchro
 	 * @param	int				$toNb					Max nb
 	 * @param	bool			$success_log			Keep success log
 	 * @param	CommonObject	$object_origin			Object origin who initialize the update of the products
+	 * @param	bool			$force_update			Force update even if update date not more recent
 	 * @return	int										<0 if KO, >0 if OK
 	 */
-	public function synchronizeProducts($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $success_log = true, $object_origin = null)
+	public function synchronizeProducts($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $success_log = true, $object_origin = null, $force_update = false, $page = 0)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', page=' . $page, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
@@ -3112,16 +3271,57 @@ class eCommerceSynchro
 		if (!$error) {
 			try {
 				// Get list of product data to synchronize
-				$products_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrProduct($from_date, $to_date, $remote_ids, $toNb);
+				$products_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrProduct($from_date, $to_date, $remote_ids, $toNb, $page);
 				if ($products_data === false) {
 					$this->errors = array_merge($this->errors, $this->eCommerceRemoteAccess->errors);
 					$error++;
 				}
 
+				// Page mode: return enriched result
+				if ($page > 0 && !$error) {
+					$nb_success = 0;
+					$page_errors = array();
+					$page_warnings = array();
+
+					if (!empty($products_data['products'])) {
+						foreach ($products_data['products'] as $product_data) {
+							// Stop early if client disconnected (AJAX cancel)
+							echo ' '; @ob_flush(); @flush();
+							if (connection_aborted()) break;
+
+							$result = $this->synchronizeProduct($product_data, $object_origin, $force_update);
+							if ($result < 0) {
+								$page_errors = array_merge($page_errors, $this->errors);
+								$this->errors = array();
+							} else {
+								$nb_success++;
+							}
+							if (!empty($this->warnings)) {
+								$page_warnings = array_merge($page_warnings, $this->warnings);
+								$this->warnings = array();
+							}
+						}
+					}
+
+					// Warn about remote products not found on the site (with Dolibarr ref and ID)
+					if (!empty($products_data['missing_remote_ids'])) {
+						$page_warnings = array_merge($page_warnings, $this->buildMissingRemoteWarnings($products_data['missing_remote_ids'], 'product'));
+					}
+
+					return [
+						'total' => $products_data['total'],
+						'fetched' => $products_data['fetched'],
+						'success' => $nb_success,
+						'errors' => $page_errors,
+						'warnings' => $page_warnings,
+						'has_more' => $products_data['has_more'],
+					];
+				}
+
 				if (!$error && !empty($products_data)) {
 					foreach ($products_data as $product_data) {
 						// Synchronize the product
-						$result = $this->synchronizeProduct($product_data, $object_origin);
+						$result = $this->synchronizeProduct($product_data, $object_origin, $force_update);
 						if ($result < 0) {
 							$error++;
 							break;
@@ -3152,15 +3352,17 @@ class eCommerceSynchro
 	 *
 	 * @param	array			$product_data			Product data to synchronize
 	 * @param	CommonObject	$object_origin			Object origin who initialize the update of the products
+	 * @param	bool			$force_update			Force update even if update date not more recent
 	 * @return	int										<0 if KO, Id of the product in Dolibarr if OK
 	 */
-	public function synchronizeProduct($product_data, $object_origin = null)
+	public function synchronizeProduct($product_data, $object_origin = null, $force_update = false)
 	{
 		global $mysoc, $conf, $langs;
 		dol_syslog(__METHOD__ . ' product_data=' . json_encode($product_data), LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
+		$this->warnings = array();
 		$error = 0;
 
 		require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -3178,10 +3380,10 @@ class eCommerceSynchro
 			$this->db->begin();
 
 			try {
-				$product_ref = dol_string_nospecial(trim($product_data['ref']));
+				$product_ref = dol_sanitizeFileName(dol_string_nospecial(trim($product_data['ref'])));
 				$new_product = false;
 
-				if (empty($product_ref) && (empty($conf->global->PRODUCT_CODEPRODUCT_ADDON) || $conf->global->PRODUCT_CODEPRODUCT_ADDON == 'mod_codeproduct_leopard')) {
+				if (empty($product_ref) && (empty(ecommercengGetGlobalString('PRODUCT_CODEPRODUCT_ADDON')) || ecommercengGetGlobalString('PRODUCT_CODEPRODUCT_ADDON') == 'mod_codeproduct_leopard')) {
 					$this->errors[] = $this->langs->trans('ECommerceErrorProductRefMandatory');
 					$error++;
 				} else {
@@ -3318,7 +3520,7 @@ class eCommerceSynchro
 					}
 
 					// Need to synchronize ?
-					$bypass = !empty($this->eCommerceProduct->last_update) && strtotime($product_data['last_update']) <= strtotime($this->eCommerceProduct->last_update);
+					$bypass = !$force_update && !empty($this->eCommerceProduct->last_update) && strtotime($product_data['last_update']) <= strtotime($this->eCommerceProduct->last_update);
 
 					// Update if not found or the last update date more recent
 					if (!$error && (empty($product->id) || empty($this->eCommerceProduct->id) || !$bypass)) {
@@ -3346,7 +3548,7 @@ class eCommerceSynchro
 						$product->url = strlen($product_data['url']) > 255 ? '' : $product_data['url'];
 
 						if (!isset($product->stock_reel)) $product->stock_reel = 0;
-						if (property_exists($product, 'stockable_product')) $product->stockable_product = $product_data['extrafields']['ecommerceng_stockable_product'];
+						if (property_exists($product, 'stockable_product') && isset($product_data['extrafields']['ecommerceng_stockable_product'])) $product->stockable_product = $product_data['extrafields']['ecommerceng_stockable_product'];
 
 						if (!($product->id > 0)) $product->array_options = $this->getDefaultExtraFields($product->table_element, $this->eCommerceSite);
 						if (is_array($product_data['extrafields'])) {
@@ -3359,10 +3561,10 @@ class eCommerceSynchro
 
 						// Update product
 						if ($product->id > 0) {
-							if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+							if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 								if (empty($product->note_private) && !empty($product->note)) $product->note_private = $product->note;
 								$product->note_private = dol_concatdesc($product->note_private, $this->langs->trans('ECommerceUpdateProductFromSiteNote', dol_print_date(dol_now(), 'dayhour'), $this->eCommerceSite->name, $product_data['remote_id']));
-								if (!empty($conf->global->ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE)) {
+								if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE'))) {
 									$product->note_private = dol_concatdesc($product->note_private . " :", json_encode($product_data['remote_datas']));
 								}
 								$product->note = $product->note_private;
@@ -3380,10 +3582,10 @@ class eCommerceSynchro
 						} // Create product
 						else {
 							$new_product = true;
-							if (!isset($product_data['enachat']) && !empty($conf->global->ECOMMERCENG_PRODUCT_IN_PURCHASE_WHEN_CREATED)) $product->status_buy = 1;
+							if (!isset($product_data['enachat']) && !empty(ecommercengGetGlobalString('ECOMMERCENG_PRODUCT_IN_PURCHASE_WHEN_CREATED'))) $product->status_buy = 1;
 							$product->canvas = $product_data['canvas'];
 							$product->note_private = isset($product_data['note']) ? $product_data['note'] : "";
-							if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+							if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 								$product->note_private = dol_concatdesc($product->note_private, $this->langs->trans('ECommerceCreateProductFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($product_data['remote_datas']));
 							}
 							$product->note = $product->note_private;
@@ -3449,12 +3651,16 @@ class eCommerceSynchro
 							if ($new_product) {
 								// Set price
 								$price_level = !empty($this->eCommerceSite->price_level) ? $this->eCommerceSite->price_level : 1;
+								$price = !empty((float) $product_data['price']) ? $product_data['price'] : $product->price;
+								$tax_rate = !empty((float) $product_data['tax_rate']) ? $product_data['tax_rate'] : $product->tva_tx;
+								$price_min = !empty((float) $product_data['price_min']) ? $product_data['price_min'] : $product->price_min;
 
 								// The price type from eCommerce is defined for the site: TI/TE (Tax Include / Tax Excluded)
-								if (empty($conf->global->PRODUIT_MULTIPRICES)) {
-									$result = $product->updatePrice($product_data['price'], $this->eCommerceSite->ecommerce_price_type, $this->user, $product_data['tax_rate'], $product_data['price_min']);
+								if (empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
+									$result = $product->updatePrice($price, $this->eCommerceSite->ecommerce_price_type, $this->user, $tax_rate, $price_min);
 								} else {
-									$result = $product->updatePrice($product_data['price'], $this->eCommerceSite->ecommerce_price_type, $this->user, $product_data['tax_rate'], $product_data['price_min'], $price_level);
+									sleep(1);
+									$result = $product->updatePrice($price, $this->eCommerceSite->ecommerce_price_type, $this->user, $tax_rate, $price_min, $price_level);
 								}
 								if ($result <= 0) {
 									$this->errors[] = $this->langs->trans('ECommerceErrorUpdateProductStock');
@@ -3463,11 +3669,11 @@ class eCommerceSynchro
 									$error++;
 								}
 							} else {
-								// Update price if need
+								// Update price if it's needed
 								$price_level = empty($this->eCommerceSite->price_level) ? 1 : $this->eCommerceSite->price_level;
 
 								// Get current product values
-								if (empty($conf->global->PRODUIT_MULTIPRICES)) {
+								if (empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 									$price_base_type_org = $product->price_base_type;
 									$price_org = $product->price;
 									$price_min_org = $product->price_min;
@@ -3482,16 +3688,17 @@ class eCommerceSynchro
 								$price_base_type = $this->eCommerceSite->ecommerce_price_type;
 								if (isset($product_data['price_base_type'])) $price_base_type = $product_data['price_base_type'];
 
-								if ($price_base_type_org != $price_base_type ||
+								if (!empty((float) $product_data['price'])
+									&& ($price_base_type_org != $price_base_type ||
 									$price_org != $product_data['price'] ||
 									(isset($product_data['price_min']) && $price_min_org != $product_data['price_min']) ||
-									price2num((float)$product_data['tax_rate']) != price2num((float) $tax_rate_org)
+									price2num((float)$product_data['tax_rate']) != price2num((float) $tax_rate_org))
 								) {
 									if ($product_data['price_min'] === '') {
 										$product_data['price_min'] = $price_min_org <= $product_data['price'] ? $price_min_org : $product_data['price'];
 									}
 									// The price type from eCommerce is defined for the site: TI/TE (Tax Include / Tax Excluded)
-									if (empty($conf->global->PRODUIT_MULTIPRICES)) {
+									if (empty(ecommercengGetGlobalString('PRODUIT_MULTIPRICES'))) {
 										$result = $product->updatePrice($product_data['price'], $price_base_type, $this->user, $product_data['tax_rate'], $product_data['price_min']);
 									} else {
 										$result = $product->updatePrice($product_data['price'], $price_base_type, $this->user, $product_data['tax_rate'], $product_data['price_min'], $price_level);
@@ -3507,7 +3714,7 @@ class eCommerceSynchro
 						}
 
 						// Set stock
-						if (!$error && ($product->type != Product::TYPE_SERVICE || !empty($conf->global->STOCK_SUPPORTS_SERVICES)) &&
+						if (!$error && ($product->type != Product::TYPE_SERVICE || !empty(ecommercengGetGlobalString('STOCK_SUPPORTS_SERVICES'))) &&
 							$this->eCommerceSite->stock_sync_direction == 'ecommerce2dolibarr' && !empty($product->array_options["options_ecommerceng_wc_manage_stock_{$this->eCommerceSite->id}_{$conf->entity}"]) &&
 							empty($product->array_options["options_ecommerceng_wc_dont_update_stock_{$this->eCommerceSite->id}_{$conf->entity}"])
 						) {
@@ -3532,7 +3739,8 @@ class eCommerceSynchro
 //                                            $this->errors[] = 'Error - Unknown remote warehouse : ' . $remote_warehouse_id;
 										} else {
 											$current_stock = isset($product->stock_warehouse[$local_warehouse_id]->real) ? $product->stock_warehouse[$local_warehouse_id]->real : 0;
-											$new_warehouses_stock[$local_warehouse_id] = price2num($stock - $current_stock);
+											$remote_stock = ($stock !== '' ? (float) $stock : 0);
+											$new_warehouses_stock[$local_warehouse_id] = price2num($remote_stock - $current_stock);
 										}
 									}
 								}
@@ -3866,7 +4074,7 @@ class eCommerceSynchro
 		}
 
 		// Delete all categories of the ecommerce
-		if (!$error && empty($conf->global->ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK)) {
+		if (!$error && empty(ecommercengGetGlobalString('ECOMMERCE_DONT_UNSET_CATEGORIE_OF_PRODUCT_WHEN_DELINK'))) {
 			require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 			$eCommerceSite = new eCommerceSite($this->db);
 			$product = new Product($this->db);
@@ -3907,6 +4115,60 @@ class eCommerceSynchro
 	}
 
 	/**
+	 *  Unlink order
+	 *
+	 * @param	int		$site_id		Site ID
+	 * @param	int		$order_id		Order ID
+	 * @param	string	$remote_id		Remote ID
+	 * @return	int						<0 if KO, >0 if OK
+	 */
+	public function unlinkOrder($site_id, $order_id = 0, $remote_id = '')
+	{
+		dol_syslog(__METHOD__ . " site_id=$site_id, order_id=$order_id, remote_id=$remote_id", LOG_DEBUG);
+		global $user;
+
+		$error = 0;
+		$this->db->begin();
+
+		// Delete link to ecommerce
+		$eCommerceCommande = new eCommerceCommande($this->db);
+		if ($order_id > 0 && $eCommerceCommande->fetchByCommandeId($order_id, $site_id) > 0) {
+			if ($eCommerceCommande->delete($user) < 0) {
+				$this->errors[] = $this->langs->trans('ECommerceErrorWhenUnlinkOrderByOrderId', $this->eCommerceSite->name, $order_id);
+				$error++;
+			}
+		} elseif ($remote_id > 0 && $eCommerceCommande->fetchByRemoteId($remote_id, $site_id) > 0) {
+			if ($eCommerceCommande->delete($user) < 0) {
+				$this->errors[] = $this->langs->trans('ECommerceErrorWhenUnlinkOrderByRemoteId', $this->eCommerceSite->name, $remote_id);
+				$error++;
+			}
+		} else {
+			$this->errors[] = $this->langs->trans('ECommerceErrorWhenUnlinkOrder', $this->eCommerceSite->name, $order_id, $remote_id);
+			$error++;
+		}
+
+		// Clear the ref_ext of the order (set during synchronization: name-remote_id)
+		if (!$error) {
+			$order_id_to_clear = $order_id > 0 ? $order_id : $eCommerceCommande->fk_commande;
+			if ($order_id_to_clear > 0) {
+				$sql = "UPDATE " . MAIN_DB_PREFIX . "commande SET ref_ext = '' WHERE rowid = " . ((int) $order_id_to_clear);
+				if (!$this->db->query($sql)) {
+					$this->errors[] = $this->langs->trans('ECommerceErrorWhenUnlinkOrderRefExt', $this->eCommerceSite->name, $order_id_to_clear);
+					$error++;
+				}
+			}
+		}
+
+		if ($error) {
+			$this->db->rollback();
+			return -1;
+		} else {
+			$this->db->commit();
+			return 1;
+		}
+	}
+
+	/**
 	 * Synchronize a list of order remote id
 	 *
 	 * @param	int		$from_date						Synchronize from date
@@ -3917,9 +4179,9 @@ class eCommerceSynchro
 	 * @param	bool	$dont_synchronize_products		Bypass the synchronization of the product of the order
 	 * @return	int										<0 if KO, >0 if OK
 	 */
-	public function synchronizeOrders($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $success_log = true, $dont_synchronize_products = false)
+	public function synchronizeOrders($from_date = null, $to_date = null, $remote_ids = array(), $toNb = 0, $success_log = true, $dont_synchronize_products = false, $page = 0)
 	{
-		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb, LOG_DEBUG);
+		dol_syslog(__METHOD__ . ' remote_ids=' . json_encode($remote_ids) . ', toNb=' . $toNb . ', page=' . $page, LOG_DEBUG);
 
 		$this->error = '';
 		$this->errors = array();
@@ -3935,11 +4197,52 @@ class eCommerceSynchro
 
 		if (!$error) {
 			try {
-				// Get list of customer data to synchronize
-				$orders_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrCommande($from_date, $to_date, $remote_ids, $toNb);
+				// Get list of order data to synchronize
+				$orders_data = $this->eCommerceRemoteAccess->convertRemoteObjectIntoDolibarrCommande($from_date, $to_date, $remote_ids, $toNb, $page);
 				if ($orders_data === false) {
 					$this->errors = array_merge($this->errors, $this->eCommerceRemoteAccess->errors);
 					$error++;
+				}
+
+				// Page mode: return enriched result
+				if ($page > 0 && !$error) {
+					$nb_success = 0;
+					$page_errors = array();
+					$page_warnings = array();
+
+					if (!empty($orders_data['orders'])) {
+						foreach ($orders_data['orders'] as $order_data) {
+							// Stop early if client disconnected (AJAX cancel)
+							echo ' '; @ob_flush(); @flush();
+							if (connection_aborted()) break;
+
+							$result = $this->synchronizeOrder($order_data, $dont_synchronize_products);
+							if ($result < 0) {
+								$page_errors = array_merge($page_errors, $this->errors);
+								$this->errors = array();
+							} else {
+								$nb_success++;
+							}
+							if (!empty($this->warnings)) {
+								$page_warnings = array_merge($page_warnings, $this->warnings);
+								$this->warnings = array();
+							}
+						}
+					}
+
+					// Warn about remote orders not found on the site (with Dolibarr ref and ID)
+					if (!empty($orders_data['missing_remote_ids'])) {
+						$page_warnings = array_merge($page_warnings, $this->buildMissingRemoteWarnings($orders_data['missing_remote_ids'], 'commande'));
+					}
+
+					return [
+						'total' => $orders_data['total'],
+						'fetched' => $orders_data['fetched'],
+						'success' => $nb_success,
+						'errors' => $page_errors,
+						'warnings' => $page_warnings,
+						'has_more' => $orders_data['has_more'],
+					];
 				}
 
 				if (!$error && !empty($orders_data)) {
@@ -4053,7 +4356,7 @@ class eCommerceSynchro
 	public function synchronizeOrder($order_data, $dont_synchronize_products = false)
 	{
 		dol_syslog(__METHOD__ . ' order_data=' . json_encode($order_data), LOG_DEBUG);
-		global $conf;
+		global $conf, $user;
 
 		$this->error = '';
 		$this->errors = array();
@@ -4192,7 +4495,7 @@ class eCommerceSynchro
 
 									if (!($order->id > 0)) {
 										$order->array_options = $this->getDefaultExtraFields($order->table_element, $this->eCommerceSite);
-										if (!empty($conf->global->THIRDPARTY_PROPAGATE_EXTRAFIELDS_TO_ORDER) && $order->socid > 0 && $order->fetch_thirdparty() > 0) {
+										if (!empty(ecommercengGetGlobalString('THIRDPARTY_PROPAGATE_EXTRAFIELDS_TO_ORDER')) && $order->socid > 0 && $order->fetch_thirdparty() > 0) {
 											// Only on create
 											foreach ($order->thirdparty->array_options as $key => $value) {
 												$order->array_options[$key] = $value;
@@ -4211,9 +4514,9 @@ class eCommerceSynchro
 									// Update order
 									if ($order->id > 0) {
 										$new_order = false;
-										if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+										if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 											$order->note_private = dol_concatdesc($order->note_private, $this->langs->trans('ECommerceUpdateOrderFromSiteNote', dol_print_date(dol_now(), 'dayhour'), $this->eCommerceSite->name, $order_data['remote_id']));
-											if (!empty($conf->global->ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE)) {
+											if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_DETAILED_UPDATE_LOG_IN_NOTE'))) {
 												$order->note_private = dol_concatdesc($order->note_private . " :", json_encode($order_data['remote_order']));
 											}
 										}
@@ -4228,6 +4531,7 @@ class eCommerceSynchro
 									else {
 										$new_order = true;
 										$order->statut = Commande::STATUS_DRAFT;             // STATUS_DRAFT by default at creation
+										$order->status = Commande::STATUS_DRAFT;             // STATUS_DRAFT by default at creation
 										$order->cond_reglement_id = $third_party->cond_reglement_id > 0 ? $third_party->cond_reglement_id : (isset($this->eCommerceSite->parameters['payment_cond']) ? $this->eCommerceSite->parameters['payment_cond'] : null);
 										$order->source = dol_getIdFromCode($this->db, 'OrderByWWW', 'c_input_method', 'code', 'rowid'); // Order mode. Not visible with some Dolibarr versions
 										$order->note_private = "";
@@ -4238,7 +4542,7 @@ class eCommerceSynchro
 												$order->note_private = $order_data['note'];
 											}
 										}
-										if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+										if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 											$order->note_private = dol_concatdesc($order->note_private, $this->langs->trans('ECommerceCreateOrderFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($order_data['remote_order']));
 										}
 
@@ -4339,7 +4643,7 @@ class eCommerceSynchro
 
 									// Set payment mode
 									$payment_methods_already_set = false;
-									if (!$error && $payment_method_id > 0 && $order->statut >= 0) {
+									if (!$error && $payment_method_id > 0 && ($order->statut ?? $order->status) >= 0) {
 										$result = $order->setPaymentMethods($payment_method_id);
 										if ($result < 0) {
 											$this->errors[] = $this->langs->trans('ECommerceErrorOrderSetPaymentMethods');
@@ -4352,7 +4656,7 @@ class eCommerceSynchro
 									}
 
 									// Update the order status
-									if (!$error && ($new_order || ($order->statut != $order_data['status']))) {        // Always when creating
+									if (!$error && ($new_order || (($order->statut ?? $order->status) != $order_data['status']))) {        // Always when creating
 										// Get default warehouse ID
 										$default_warehouse_id = 0;
 										if (!empty($this->eCommerceSite->parameters['enable_warehouse_depending_on_shipping_zone_method'])) {
@@ -4368,7 +4672,7 @@ class eCommerceSynchro
 										// Set validate warehouse ID if no warehouse plugin support activated and movement stock on validate order set
 										$warehouse_id = 0;
 										if (!$error && empty($this->eCommerceSite->parameters['enable_warehouse_plugin_support']) &&
-											!empty($conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER) && $conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER == 1
+											ecommercengGetGlobalInt('STOCK_CALCULATE_ON_VALIDATE_ORDER') == 1
 										) {
 											$warehouse_id = $default_warehouse_id;
 											if (empty($warehouse_id)) {
@@ -4377,8 +4681,34 @@ class eCommerceSynchro
 											}
 										}
 
+										// A cancelled order cannot be moved directly to another active status: Dolibarr's cloture() silently
+										// ignores rows with fk_statut <= STATUS_DRAFT, and set_reopen() alone doesn't replay the stock
+										// decrement done by valid(). So bring it back to draft first (set_reopen then setStatut, neither of
+										// which touches the stock) and let the valid()/cloture() below replay the proper native stock movements.
+										if (!$error && ($order->statut ?? $order->status) == Commande::STATUS_CANCELED &&
+											in_array($order_data['status'], array(Commande::STATUS_VALIDATED, Commande::STATUS_SHIPMENTONPROCESS, Commande::STATUS_CLOSED))
+										) {
+											$result = $order->set_reopen($this->user);
+											if ($result < 0) {
+												$this->errors[] = $this->langs->trans('ECommerceErrorReopenOrder');
+												if (!empty($order->error)) $this->errors[] = $order->error;
+												$this->errors = array_merge($this->errors, $order->errors);
+												$error++;
+											} else {
+												// set_reopen() puts the order back to validated: force it to draft (no stock movement)
+												// so the valid() below replays the decrement cleanly.
+												$result = $order->setStatut(Commande::STATUS_DRAFT);
+												if ($result < 0) {
+													$this->errors[] = $this->langs->trans('ECommerceErrorReopenOrder');
+													if (!empty($order->error)) $this->errors[] = $order->error;
+													$this->errors = array_merge($this->errors, $order->errors);
+													$error++;
+												}
+											}
+										}
+
 										// Valid the order if the distant order is not at the draft status but the order is draft. For set the order ref.
-										if (!$error && $order_data['status'] != Commande::STATUS_DRAFT && $order->statut == Commande::STATUS_DRAFT) {
+										if (!$error && $order_data['status'] != Commande::STATUS_DRAFT && ($order->statut ?? $order->status) == Commande::STATUS_DRAFT) {
 											$result = $order->valid($this->user, $warehouse_id);
 											if ($result < 0) {
 												$this->errors[] = $this->langs->trans('ECommerceErrorValidOrder');
@@ -4396,24 +4726,28 @@ class eCommerceSynchro
 
 										// Update to the specific status
 										if (!$error) {
-											if ($order_data['status'] == Commande::STATUS_VALIDATED && $order->statut != Commande::STATUS_VALIDATED) {
-												$result = $order->setStatut(Commande::STATUS_VALIDATED, $order->id, $order->table_element);
+											if ($order_data['status'] == Commande::STATUS_VALIDATED && ($order->statut ?? $order->status) != Commande::STATUS_VALIDATED) {
+												$result = $order->setStatut(Commande::STATUS_VALIDATED);
 												if ($result < 0) {
 													$this->errors[] = $this->langs->trans('ECommerceErrorSetStatusOrderValidated');
 													if (!empty($order->error)) $this->errors[] = $order->error;
 													$this->errors = array_merge($this->errors, $order->errors);
 													$error++;
 												}
-											} elseif ($order_data['status'] == Commande::STATUS_SHIPMENTONPROCESS && $order->statut != Commande::STATUS_SHIPMENTONPROCESS) {
-												$result = $order->setStatut(2, $order->id, $order->table_element);
+											} elseif ($order_data['status'] == Commande::STATUS_SHIPMENTONPROCESS && ($order->statut ?? $order->status) != Commande::STATUS_SHIPMENTONPROCESS) {
+												$result = $order->setStatut(Commande::STATUS_SHIPMENTONPROCESS);
 												if ($result < 0) {
 													$this->errors[] = $this->langs->trans('ECommerceErrorSetStatusOrderShipmentOnProcess');
 													if (!empty($order->error)) $this->errors[] = $order->error;
 													$this->errors = array_merge($this->errors, $order->errors);
 													$error++;
 												}
-											} elseif ($order_data['status'] == Commande::STATUS_CANCELED && $order->statut != Commande::STATUS_CANCELED) {
-												$result = $order->cancel($warehouse_id);
+											} elseif ($order_data['status'] == Commande::STATUS_CANCELED && ($order->statut ?? $order->status) != Commande::STATUS_CANCELED) {
+												if (version_compare(DOL_VERSION, '23.0.0') >= 0) {
+													$result = $order->cancel($user, $warehouse_id);
+												} else {
+													$result = $order->cancel($warehouse_id);
+												}
 												if ($result < 0) {
 													$this->errors[] = $this->langs->trans('ECommerceErrorCancelOrder');
 													if (!empty($order->error)) $this->errors[] = $order->error;
@@ -4427,7 +4761,7 @@ class eCommerceSynchro
 													}
 												}
 											} elseif ($order_data['status'] == Commande::STATUS_CLOSED) {
-												if ($order->statut != Commande::STATUS_CLOSED) {
+												if (($order->statut ?? $order->status) != Commande::STATUS_CLOSED) {
 													$result = $order->cloture($this->user);
 													if ($result < 0) {
 														$this->errors[] = $this->langs->trans('ECommerceErrorCloseOrder');
@@ -4452,7 +4786,7 @@ class eCommerceSynchro
 									}
 
 									// Set payment mode
-									if (!$error && !$payment_methods_already_set && $payment_method_id > 0 && $order->statut >= 0) {
+									if (!$error && !$payment_methods_already_set && $payment_method_id > 0 && ($order->statut ?? $order->status) >= 0) {
 										$result = $order->setPaymentMethods($payment_method_id);
 										if ($result < 0) {
 											$this->errors[] = $this->langs->trans('ECommerceErrorOrderSetPaymentMethods');
@@ -4497,11 +4831,11 @@ class eCommerceSynchro
 					}
 
 					// Generate PDF
-					if (!$error && !$bypass && $order->id > 0 && empty($conf->global->MAIN_DISABLE_PDF_AUTOUPDATE)) {
+					if (!$error && !$bypass && $order->id > 0 && empty(ecommercengGetGlobalString('MAIN_DISABLE_PDF_AUTOUPDATE'))) {
 						// Define output language
 						$outputlangs = $this->langs;
 						$newlang = '';
-						if ($conf->global->MAIN_MULTILANGS && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
+						if (ecommercengGetGlobalString('MAIN_MULTILANGS') && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
 						if (!empty($newlang)) {
 							$outputlangs = new Translate("", $conf);
 							$outputlangs->setDefaultLang($newlang);
@@ -4510,9 +4844,9 @@ class eCommerceSynchro
 						$order->fetch($order->id); // Reload to get new records
 						$order->fetch_thirdparty();
 
-						$hidedetails = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS) ? 1 : 0;
-						$hidedesc = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DESC) ? 1 : 0;
-						$hideref = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_REF) ? 1 : 0;
+						$hidedetails = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS')) ? 1 : 0;
+						$hidedesc = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DESC')) ? 1 : 0;
+						$hideref = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_REF')) ? 1 : 0;
 
 						$result = $order->generateDocument($order->modelpdf, $outputlangs, $hidedetails, $hidedesc, $hideref);
 					}
@@ -4578,11 +4912,11 @@ class eCommerceSynchro
 
 		$canMakeMovement = !empty($this->eCommerceSite->parameters['enable_warehouse_plugin_support']) && !empty($conf->stock->enabled);
 		if ($object->element == 'commande') {
-			$canMakeMovement &= !empty($conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER) && $conf->global->STOCK_CALCULATE_ON_VALIDATE_ORDER == 1;
+			$canMakeMovement &= ecommercengGetGlobalInt('STOCK_CALCULATE_ON_VALIDATE_ORDER') == 1;
 			$movementLabel = $this->langs->trans($undoMovement ? "OrderCanceledInDolibarr" : "OrderValidatedInDolibarr", $object->ref);
 			$movementDelivery = empty($undoMovement);
 		} elseif ($object->element == 'facture') {
-			$canMakeMovement &= $object->type != Facture::TYPE_DEPOSIT && !empty($conf->global->STOCK_CALCULATE_ON_BILL);
+			$canMakeMovement &= $object->type != Facture::TYPE_DEPOSIT && !empty(ecommercengGetGlobalString('STOCK_CALCULATE_ON_BILL'));
 			$movementLabel = $this->langs->trans($undoMovement ? "InvoiceBackToDraftInDolibarr" : "InvoiceValidatedInDolibarr", $object->ref);
 			$movementDelivery = empty($undoMovement) && $object->type != Facture::TYPE_CREDIT_NOTE;
 		} else {
@@ -4858,8 +5192,8 @@ class eCommerceSynchro
 										$invoice->date = isset($order_data['date_payment']) && $order_data['date_payment'] !== '' ? strtotime($order_data['date_payment']) : ($order->id > 0 ? $order->date_commande : strtotime($order_data['date_commande']));
 										$invoice->ref_client = $order->id > 0 ? $order->ref_client : $order_data['ref_client'];
 										$invoice->ref_ext = $invoice_ref_ext;
-										$invoice->modelpdf = $conf->global->FACTURE_ADDON_PDF;
-										$invoice->model_pdf = $conf->global->FACTURE_ADDON_PDF;
+										$invoice->modelpdf = ecommercengGetGlobalString('FACTURE_ADDON_PDF');
+										$invoice->model_pdf = ecommercengGetGlobalString('FACTURE_ADDON_PDF');
 										$invoice->cond_reglement_id = $order->id > 0 ? $order->cond_reglement_id : ($third_party->cond_reglement_id > 0 ? $third_party->cond_reglement_id : (isset($this->eCommerceSite->parameters['payment_cond']) ? $this->eCommerceSite->parameters['payment_cond'] : null));
 										$invoice->multicurrency_code = $order->id > 0 ? $order->multicurrency_code : null;
 										$invoice->multicurrency_tx = $order->id > 0 ? $order->multicurrency_tx : null;
@@ -4874,7 +5208,7 @@ class eCommerceSynchro
 												$invoice->note_private = $order_data['note'];
 											}
 										}
-										if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+										if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 											$invoice->note_private = dol_concatdesc($invoice->note_private, $this->langs->trans('ECommerceCreateInvoiceFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($order_data['remote_order']));
 										}
 
@@ -5010,7 +5344,7 @@ class eCommerceSynchro
 										// Set validate warehouse ID if no warehouse plugin support activated and movement stock on validate order set
 										$warehouse_id = 0;
 										if (!$error && empty($this->eCommerceSite->parameters['enable_warehouse_plugin_support']) &&
-											!empty($conf->global->STOCK_CALCULATE_ON_BILL)
+											!empty(ecommercengGetGlobalString('STOCK_CALCULATE_ON_BILL'))
 										) {
 											$warehouse_id = $default_warehouse_id;
 											if (empty($warehouse_id)) {
@@ -5020,9 +5354,9 @@ class eCommerceSynchro
 										}
 
 										if ($isDepositType) {
-											$save_WORKFLOW_INVOICE_AMOUNT_CLASSIFY_BILLED_ORDER = $conf->global->WORKFLOW_INVOICE_AMOUNT_CLASSIFY_BILLED_ORDER;
-											$save_WORKFLOW_INVOICE_CLASSIFY_BILLED_PROPAL = $conf->global->WORKFLOW_INVOICE_CLASSIFY_BILLED_PROPAL;
-											$save_WORKFLOW_INVOICE_CLASSIFY_BILLED_ORDER = $conf->global->WORKFLOW_INVOICE_CLASSIFY_BILLED_ORDER;
+											$save_WORKFLOW_INVOICE_AMOUNT_CLASSIFY_BILLED_ORDER = ecommercengGetGlobalString('WORKFLOW_INVOICE_AMOUNT_CLASSIFY_BILLED_ORDER');
+											$save_WORKFLOW_INVOICE_CLASSIFY_BILLED_PROPAL = ecommercengGetGlobalString('WORKFLOW_INVOICE_CLASSIFY_BILLED_PROPAL');
+											$save_WORKFLOW_INVOICE_CLASSIFY_BILLED_ORDER = ecommercengGetGlobalString('WORKFLOW_INVOICE_CLASSIFY_BILLED_ORDER');
 											$conf->global->WORKFLOW_INVOICE_AMOUNT_CLASSIFY_BILLED_ORDER = 0;
 											$conf->global->WORKFLOW_INVOICE_CLASSIFY_BILLED_PROPAL = 0;
 											$conf->global->WORKFLOW_INVOICE_CLASSIFY_BILLED_ORDER = 0;
@@ -5101,11 +5435,11 @@ class eCommerceSynchro
 										}
 
 										// Generate document
-										if (!$error && !empty($invoice->modelpdf) && empty($conf->global->MAIN_DISABLE_PDF_AUTOUPDATE)) {
+										if (!$error && !empty($invoice->modelpdf) && empty(ecommercengGetGlobalString('MAIN_DISABLE_PDF_AUTOUPDATE'))) {
 											// Define output language
 											$outputlangs = $this->langs;
 											$newlang = '';
-											if ($conf->global->MAIN_MULTILANGS && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
+											if (ecommercengGetGlobalString('MAIN_MULTILANGS') && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
 											if (!empty($newlang)) {
 												$outputlangs = new Translate("", $conf);
 												$outputlangs->setDefaultLang($newlang);
@@ -5113,9 +5447,9 @@ class eCommerceSynchro
 											}
 											$invoice->fetch($invoice->id); // Reload to get new records
 
-											$hidedetails = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS) ? 1 : 0;
-											$hidedesc = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DESC) ? 1 : 0;
-											$hideref = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_REF) ? 1 : 0;
+											$hidedetails = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS')) ? 1 : 0;
+											$hidedesc = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DESC')) ? 1 : 0;
+											$hideref = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_REF')) ? 1 : 0;
 											$result = $invoice->generateDocument($invoice->modelpdf, $outputlangs, $hidedetails, $hidedesc, $hideref);
 											if ($result < 0) {
 												$this->errors[] = $this->langs->trans('ECommerceErrorInvoiceGenerateDocument');
@@ -5147,7 +5481,7 @@ class eCommerceSynchro
 												$supplier_invoice->fk_account = $bank_account_id;
 												$supplier_invoice->array_options = $this->getDefaultExtraFields($supplier_invoice->table_element, $this->eCommerceSite);
 
-												if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+												if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 													$supplier_invoice->note_private = dol_concatdesc($supplier_invoice->note_private, $this->langs->trans('ECommerceCreateSupplierInvoiceFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($order_data['remote_order']));
 												}
 
@@ -5232,11 +5566,11 @@ class eCommerceSynchro
 												}
 
 												// Generate document
-												if (!$error && !empty($conf->global->INVOICE_SUPPLIER_ADDON_PDF) && empty($conf->global->MAIN_DISABLE_PDF_AUTOUPDATE)) {
+												if (!$error && !empty(ecommercengGetGlobalString('INVOICE_SUPPLIER_ADDON_PDF')) && empty(ecommercengGetGlobalString('MAIN_DISABLE_PDF_AUTOUPDATE'))) {
 													// Define output language
 													$outputlangs = $this->langs;
 													$newlang = '';
-                                                    if ($conf->global->MAIN_MULTILANGS && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
+                                                    if (ecommercengGetGlobalString('MAIN_MULTILANGS') && !empty($order_data['language']) && $order_data['language'] != 'ec_none') $newlang = $order_data['language'];
 													if (!empty($newlang)) {
 														$outputlangs = new Translate("", $conf);
 														$outputlangs->setDefaultLang($newlang);
@@ -5244,10 +5578,10 @@ class eCommerceSynchro
 													}
 													$supplier_invoice->fetch($supplier_invoice->id); // Reload to get new records
 
-													$hidedetails = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS) ? 1 : 0;
-													$hidedesc = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DESC) ? 1 : 0;
-													$hideref = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_REF) ? 1 : 0;
-													$result = $supplier_invoice->generateDocument($conf->global->INVOICE_SUPPLIER_ADDON_PDF, $outputlangs, $hidedetails, $hidedesc, $hideref);
+													$hidedetails = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS')) ? 1 : 0;
+													$hidedesc = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DESC')) ? 1 : 0;
+													$hideref = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_REF')) ? 1 : 0;
+													$result = $supplier_invoice->generateDocument(ecommercengGetGlobalString('INVOICE_SUPPLIER_ADDON_PDF'), $outputlangs, $hidedetails, $hidedesc, $hideref);
 													if ($result < 0) {
 														$this->errors[] = $this->langs->trans('ECommerceErrorSupplierInvoiceGenerateDocument');
 														if (!empty($supplier_invoice->error)) $this->errors[] = $supplier_invoice->error;
@@ -5267,13 +5601,13 @@ class eCommerceSynchro
 												$error++;
 											} elseif ((!isset($selected_payment_gateways['mail_model_for_send_invoice'][$selected_language]) ||
 												!($selected_payment_gateways['mail_model_for_send_invoice'][$selected_language] > 0)) &&
-												empty($conf->global->ECOMMERCENG_BYPASS_SEND_INVOICE_WHEN_NO_EMAIL_TEMPLATE)
+												empty(ecommercengGetGlobalString('ECOMMERCENG_BYPASS_SEND_INVOICE_WHEN_NO_EMAIL_TEMPLATE'))
 											) {
 												$this->errors[] = $this->langs->trans('ECommerceErrorPaymentGatewaysMailModelNotConfigured', $order_data['payment_method_id'], $order_data['payment_method'], $selected_language);
 												$error++;
 											}
 
-											if (!$error && (empty($conf->global->ECOMMERCENG_BYPASS_SEND_INVOICE_WHEN_NO_EMAIL_TEMPLATE) ||
+											if (!$error && (empty(ecommercengGetGlobalString('ECOMMERCENG_BYPASS_SEND_INVOICE_WHEN_NO_EMAIL_TEMPLATE')) ||
 													(isset($selected_payment_gateways['mail_model_for_send_invoice'][$selected_language]) && $selected_payment_gateways['mail_model_for_send_invoice'][$selected_language] > 0))
 											) {
 												$ret = $invoice->fetch($invoice->id);
@@ -5291,14 +5625,14 @@ class eCommerceSynchro
 												$deliveryreceipt = 0;
 
 												// from / send to / ...
-												$from = $conf->global->MAIN_INFO_SOCIETE_NOM . ' <' . $conf->global->MAIN_INFO_SOCIETE_MAIL . '>';
+												$from = ecommercengGetGlobalString('MAIN_INFO_SOCIETE_NOM') . ' <' . ecommercengGetGlobalString('MAIN_INFO_SOCIETE_MAIL') . '>';
 												$sendtocc = '';
-												$sendtobcc = !empty($conf->global->MAIN_MAIL_AUTOCOPY_INVOICE_TO) ? $conf->global->MAIN_MAIL_AUTOCOPY_INVOICE_TO : '';
+												$sendtobcc = ecommercengGetGlobalString('MAIN_MAIL_AUTOCOPY_INVOICE_TO');
 
 												// Define output language
 												$outputlangs = $this->langs;
 												$newlang = '';
-                                                if ($conf->global->MAIN_MULTILANGS && $selected_language != 'ec_none') $newlang = $selected_language;
+                                                if (ecommercengGetGlobalString('MAIN_MULTILANGS') && $selected_language != 'ec_none') $newlang = $selected_language;
 												if (!empty($newlang)) {
 													$outputlangs = new Translate('', $conf);
 													$outputlangs->setDefaultLang($newlang);
@@ -5307,7 +5641,7 @@ class eCommerceSynchro
 
 												// Make substitution in email content
 												$substitutionarray = getCommonSubstitutionArray($outputlangs, 0, null, $invoice);
-												$substitutionarray['__CHECK_READ__'] = (is_object($invoice) && is_object($invoice->thirdparty)) ? '<img src="' . DOL_MAIN_URL_ROOT . '/public/emailing/mailing-read.php?tag=' . $invoice->thirdparty->tag . '&securitykey=' . urlencode($conf->global->MAILING_EMAIL_UNSUBSCRIBE_KEY) . '" width="1" height="1" style="width:1px;height:1px" border="0"/>' : '';
+												$substitutionarray['__CHECK_READ__'] = (is_object($invoice) && is_object($invoice->thirdparty)) ? '<img src="' . DOL_MAIN_URL_ROOT . '/public/emailing/mailing-read.php?tag=' . $invoice->thirdparty->tag . '&securitykey=' . urlencode(ecommercengGetGlobalString('MAILING_EMAIL_UNSUBSCRIBE_KEY')) . '" width="1" height="1" style="width:1px;height:1px" border="0"/>' : '';
 												$substitutionarray['__PERSONALIZED__'] = '';    // deprecated
 												$substitutionarray['__CONTACTCIVNAME__'] = '';
 												$parameters = array('mode' => 'formemail');
@@ -5690,7 +6024,8 @@ class eCommerceSynchro
 									$invoice_refund->date = !empty($refund_info['create_date']) ? $refund_info['create_date'] : (isset($order_data['date_payment']) && $order_data['date_payment'] !== '' ? strtotime($order_data['date_payment']) : ($order->id > 0 ? $order->date_commande : strtotime($order_data['date_commande'])));
 									$invoice_refund->ref_client = $order->id > 0 ? $order->ref_client : $order_data['ref_client'];
 									$invoice_refund->ref_ext = $invoice_refund_ref_ext;
-									$invoice_refund->modelpdf = $conf->global->FACTURE_ADDON_PDF;
+									$invoice_refund->modelpdf = ecommercengGetGlobalString('FACTURE_ADDON_PDF');
+									$invoice_refund->model_pdf = $invoice_refund->modelpdf;
 									$invoice_refund->cond_reglement_id = $order->id > 0 ? $order->cond_reglement_id : ($third_party->cond_reglement_id > 0 ? $third_party->cond_reglement_id : (isset($this->eCommerceSite->parameters['payment_cond']) ? $this->eCommerceSite->parameters['payment_cond'] : null));
 									$invoice_refund->multicurrency_code = $order->id > 0 ? $order->multicurrency_code : null;
 									$invoice_refund->multicurrency_tx = $order->id > 0 ? $order->multicurrency_tx : null;
@@ -5705,7 +6040,7 @@ class eCommerceSynchro
 											$invoice_refund->note_private = $refund_info['reason'];
 										}
 									}
-									if (!empty($conf->global->ECOMMERCENG_ENABLE_LOG_IN_NOTE)) {
+									if (!empty(ecommercengGetGlobalString('ECOMMERCENG_ENABLE_LOG_IN_NOTE'))) {
 										$invoice_refund->note_private = dol_concatdesc($invoice_refund->note_private, $this->langs->trans('ECommerceCreateInvoiceFromSiteNote', $this->eCommerceSite->name) . " :\n" . json_encode($refund_info['remote_id']));
 									}
 
@@ -5840,7 +6175,7 @@ class eCommerceSynchro
 									// Set validate warehouse ID if no warehouse plugin support activated and movement stock on validate order set
 									$warehouse_id = 0;
 									if (!$error && empty($this->eCommerceSite->parameters['enable_warehouse_plugin_support']) &&
-										!empty($conf->global->STOCK_CALCULATE_ON_BILL)
+										!empty(ecommercengGetGlobalString('STOCK_CALCULATE_ON_BILL'))
 									) {
 										$warehouse_id = $default_warehouse_id;
 										if (empty($warehouse_id)) {
@@ -5916,11 +6251,11 @@ class eCommerceSynchro
 									}
 
 									// Generate document
-									if (!$error && !empty($invoice_refund->modelpdf) && empty($conf->global->MAIN_DISABLE_PDF_AUTOUPDATE)) {
+									if (!$error && !empty($invoice_refund->modelpdf) && empty(ecommercengGetGlobalString('MAIN_DISABLE_PDF_AUTOUPDATE'))) {
 										// Define output language
 										$outputlangs = $this->langs;
 										$newlang = '';
-										if ($conf->global->MAIN_MULTILANGS && !empty($refund_info['language']) && $refund_info['language'] != 'ec_none') $newlang = $refund_info['language'];
+										if (ecommercengGetGlobalString('MAIN_MULTILANGS') && !empty($refund_info['language']) && $refund_info['language'] != 'ec_none') $newlang = $refund_info['language'];
 										if (!empty($newlang)) {
 											$outputlangs = new Translate("", $conf);
 											$outputlangs->setDefaultLang($newlang);
@@ -5928,9 +6263,9 @@ class eCommerceSynchro
 										}
 										$invoice_refund->fetch($invoice_refund->id); // Reload to get new records
 
-										$hidedetails = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS) ? 1 : 0;
-										$hidedesc = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_DESC) ? 1 : 0;
-										$hideref = !empty($conf->global->MAIN_GENERATE_DOCUMENTS_HIDE_REF) ? 1 : 0;
+										$hidedetails = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DETAILS')) ? 1 : 0;
+										$hidedesc = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_DESC')) ? 1 : 0;
+										$hideref = !empty(ecommercengGetGlobalString('MAIN_GENERATE_DOCUMENTS_HIDE_REF')) ? 1 : 0;
 										$result = $invoice_refund->generateDocument($invoice_refund->modelpdf, $outputlangs, $hidedetails, $hidedesc, $hideref);
 										if ($result < 0) {
 											$this->errors[] = $this->langs->trans('ECommerceErrorInvoiceGenerateDocument');
@@ -5967,13 +6302,13 @@ class eCommerceSynchro
 //											$deliveryreceipt = 0;
 //
 //											// from / send to / ...
-//											$from = $conf->global->MAIN_INFO_SOCIETE_NOM . ' <' . $conf->global->MAIN_INFO_SOCIETE_MAIL . '>';
+//											$from = ecommercengGetGlobalString('MAIN_INFO_SOCIETE_NOM') . ' <' . ecommercengGetGlobalString('MAIN_INFO_SOCIETE_MAIL') . '>';
 //											$sendtocc = '';
-//											$sendtobcc = !empty($conf->global->MAIN_MAIL_AUTOCOPY_INVOICE_TO) ? $conf->global->MAIN_MAIL_AUTOCOPY_INVOICE_TO : '';
+//											$sendtobcc = ecommercengGetGlobalString('MAIN_MAIL_AUTOCOPY_INVOICE_TO');
 //
 //											// Define output language
 //											$outputlangs = $this->langs;
-//                                          if ($conf->global->MAIN_MULTILANGS && !empty($refund_info['language']) && $refund_info['language'] != 'ec_none') $newlang = $refund_info['language'];
+//                                          if (ecommercengGetGlobalString('MAIN_MULTILANGS') && !empty($refund_info['language']) && $refund_info['language'] != 'ec_none') $newlang = $refund_info['language'];
 //											if (!empty($newlang)) {
 //												$outputlangs = new Translate('', $conf);
 //												$outputlangs->setDefaultLang($newlang);
@@ -5982,7 +6317,7 @@ class eCommerceSynchro
 //
 //											// Make substitution in email content
 //											$substitutionarray = getCommonSubstitutionArray($outputlangs, 0, null, $invoice_refund);
-//											$substitutionarray['__CHECK_READ__'] = (is_object($invoice_refund) && is_object($invoice_refund->thirdparty)) ? '<img src="' . DOL_MAIN_URL_ROOT . '/public/emailing/mailing-read.php?tag=' . $invoice_refund->thirdparty->tag . '&securitykey=' . urlencode($conf->global->MAILING_EMAIL_UNSUBSCRIBE_KEY) . '" width="1" height="1" style="width:1px;height:1px" border="0"/>' : '';
+//											$substitutionarray['__CHECK_READ__'] = (is_object($invoice_refund) && is_object($invoice_refund->thirdparty)) ? '<img src="' . DOL_MAIN_URL_ROOT . '/public/emailing/mailing-read.php?tag=' . $invoice_refund->thirdparty->tag . '&securitykey=' . urlencode(ecommercengGetGlobalString('MAILING_EMAIL_UNSUBSCRIBE_KEY')) . '" width="1" height="1" style="width:1px;height:1px" border="0"/>' : '';
 //											$substitutionarray['__PERSONALIZED__'] = '';    // deprecated
 //											$substitutionarray['__CONTACTCIVNAME__'] = '';
 //											$parameters = array('mode' => 'formemail');
@@ -6229,7 +6564,9 @@ class eCommerceSynchro
 			$error = 0;
 			$this->db->begin();
 
-			$delta_fix = !empty($conf->global->ECOMMERCE_DELTA_FIX_TOTAL_AMOUNTS) && $conf->global->ECOMMERCE_DELTA_FIX_TOTAL_AMOUNTS > 0 ? $conf->global->ECOMMERCE_DELTA_FIX_TOTAL_AMOUNTS : 0.1;
+			$delta_fix = (float) ecommercengGetGlobalString('ECOMMERCE_DELTA_FIX_TOTAL_AMOUNTS');
+
+			if ($delta_fix <= 0) $delta_fix = 0.1;
 			$delta = $current_total_ttc_origin - $total_ttc;
 			if (abs($delta) < $delta_fix) {
 				// Force the invoice virtuality at draft
@@ -6320,8 +6657,9 @@ class eCommerceSynchro
 	 */
 	public function addProductLines(&$object, $items, $order_data, &$warehouseByLine, $dont_synchronize_products = false)
 	{
-		global $conf;
+		global $conf, $langs;
 
+		$langs->load('products');
 		$error = 0;
 		$this->db->begin();
 
@@ -6336,7 +6674,7 @@ class eCommerceSynchro
 			$amountdeposit = array();
 			$order_total_ttc = price2num($order_data['payment_amount_ttc'], 'MT');
 
-			if (!empty($conf->global->MAIN_DEPOSIT_MULTI_TVA)) {
+			if (!empty(ecommercengGetGlobalString('MAIN_DEPOSIT_MULTI_TVA'))) {
 				if ($typeAmount == 'amount') $amount = $order_total_ttc;
 				else $amount = $order_total_ttc * ($valueDeposit / 100);
 
@@ -6386,7 +6724,7 @@ class eCommerceSynchro
 
 				// Add deposit line
 				$result = $object->addline($descline, $amount, 1, $tva, 0, 0,
-					(empty($conf->global->INVOICE_PRODUCTID_DEPOSIT) ? 0 : $conf->global->INVOICE_PRODUCTID_DEPOSIT),
+					(ecommercengGetGlobalInt('INVOICE_PRODUCTID_DEPOSIT')),
 					0, '', '', 0, 0, '', 'HT', 0, $object::TYPE_STANDARD,
 					-1, 0, '', 0, 0, null, 0, '', $array_options);
 				if ($result < 0) {
@@ -6398,7 +6736,7 @@ class eCommerceSynchro
 			}
 		} elseif (is_array($items)) {
 			// Synchronize all the remote product
-			if (empty($conf->global->ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD) && !$dont_synchronize_products) {
+			if (empty(ecommercengGetGlobalString('ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD')) && !$dont_synchronize_products) {
 				// Get products to synchronize
 				$remote_id_to_synchronize = array();
 				foreach ($items as $item) {
@@ -6429,7 +6767,7 @@ class eCommerceSynchro
 				// Get product ID
 				$fk_product = 0;
 				if (!empty($item['id_remote_product'])) {
-					if (empty($conf->global->ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD)) {
+					if (empty(ecommercengGetGlobalString('ECOMMERCENG_DISABLED_PRODUCT_SYNCHRO_STOD'))) {
 						$this->initECommerceProduct();
 						$result = $this->eCommerceProduct->fetchByRemoteId($item['id_remote_product'], $this->eCommerceSite->id); // load info of table ecommerce_product
 						if ($result < 0 && !empty($this->eCommerceProduct->error)) {
@@ -6439,10 +6777,32 @@ class eCommerceSynchro
 							break;  // break on items
 						} elseif ($result > 0) {
 							$fk_product = $this->eCommerceProduct->fk_product;
+
+							// Check if product has same ref than in the order
+							$product_ref = dol_sanitizeFileName(dol_string_nospecial(trim($item['ref'])));
+							if (!empty($product_ref)) {
+								$product = new Product($this->db);
+								$result = $product->fetch(0, $product_ref);
+								if ($result < 0) {
+									$this->errors[] = $this->langs->trans('ECommerceErrorFetchProductByRef', $product_ref);
+									$this->errors[] = $product->errorsToString();
+									$error++;
+									break;  // break on items
+								} elseif ($result == 0) {
+									$this->errors[] = $this->langs->trans('ECommerceErrorProductNotFoundByRef', $product_ref);
+									$error++;
+									break;  // break on items
+								}
+								if ($product_ref != $product->ref) {
+									$this->errors[] = $this->langs->trans('ECommerceErrorProductRefMismatch', $item['id_remote_product'], $product_ref, $fk_product, $product->ref);
+									$error++;
+									break;  // break on items
+								}
+							}
 						}
 						unset($this->eCommerceProduct);
 					} else {
-						$product_ref = trim($item['ref']);
+						$product_ref = dol_sanitizeFileName(dol_string_nospecial(trim($item['ref'])));
 						if (!empty($product_ref)) {
 							$product = new Product($this->db);
 							$result = $product->fetch(0, $product_ref);
@@ -6457,7 +6817,7 @@ class eCommerceSynchro
 								break;  // break on items
 							}
 							$fk_product = $product->id;
-						} elseif (!empty($conf->global->ECOMMERCENG_PRODUCT_REF_MANDATORY)) {
+						} elseif (!empty(ecommercengGetGlobalString('ECOMMERCENG_PRODUCT_REF_MANDATORY'))) {
 							$this->errors[] = $this->langs->trans('ECommerceErrorProductRefMandatory2', $item['label']);
 							$error++;
 							break;  // break on items
@@ -6476,10 +6836,52 @@ class eCommerceSynchro
 					$product_type = $item['product_type'] != "simple" ? 1 : 0;
 					$label = !empty($item['label']) ? $item['label'] : '';
 					$description = $item['description'];
-					if (empty($description) && $fk_product > 0) {
+					if ($fk_product > 0) {
 						$product = new Product($this->db);
 						$product->fetch($fk_product);
-						$description = $product->description;
+						if (empty($description)) $description = $product->description;
+						// Add custom code and origin country into description
+						if (empty($conf->global->MAIN_PRODUCT_DISABLE_CUSTOMCOUNTRYCODE) && (!empty($product->customcode) || !empty($product->country_code))) {
+							$tmptxt = '(';
+							// Define output language
+							if (getDolGlobalInt('MAIN_MULTILANGS') && !empty($conf->global->PRODUIT_TEXTS_IN_THIRDPARTY_LANGUAGE)) {
+								$outputlangs = $langs;
+								$newlang = '';
+								if (empty($newlang) && GETPOST('lang_id', 'alpha')) {
+									$newlang = GETPOST('lang_id', 'alpha');
+								}
+								if (empty($newlang)) {
+									if (!isset($object->thirdparty) && !is_object($object->thirdparty)) $object->fetch_thirdparty();
+									$newlang = $object->thirdparty->default_lang;
+								}
+								if (!empty($newlang)) {
+									$outputlangs = new Translate("", $conf);
+									$outputlangs->setDefaultLang($newlang);
+									$outputlangs->load('products');
+								}
+								if (!empty($product->customcode)) {
+									$tmptxt .= $outputlangs->transnoentitiesnoconv("CustomCode").': '.$product->customcode;
+								}
+								if (!empty($product->customcode) && !empty($product->country_code)) {
+									$tmptxt .= ' - ';
+								}
+								if (!empty($product->country_code)) {
+									$tmptxt .= $outputlangs->transnoentitiesnoconv("CountryOrigin").': '.getCountry($product->country_code, 0, $this->db, $outputlangs, 0);
+								}
+							} else {
+								if (!empty($product->customcode)) {
+									$tmptxt .= $langs->transnoentitiesnoconv("CustomCode").': '.$product->customcode;
+								}
+								if (!empty($product->customcode) && !empty($product->country_code)) {
+									$tmptxt .= ' - ';
+								}
+								if (!empty($product->country_code)) {
+									$tmptxt .= $langs->transnoentitiesnoconv("CountryOrigin").': '.getCountry($product->country_code, 0, $this->db, $langs, 0);
+								}
+							}
+							$tmptxt .= ')';
+							$description = dol_concatdesc($description, $tmptxt);
+						}
 					}
 					$description = dol_concatdesc($description, ($item['additional_description'] ?? ''));
 
@@ -6499,7 +6901,7 @@ class eCommerceSynchro
 								$buy_price = $result;
 							}
 						}
-						if (empty($buy_price) && isset($conf->global->ForceBuyingPriceIfNull) && $conf->global->ForceBuyingPriceIfNull > 0) {
+						if (empty($buy_price) && isset($conf->global->ForceBuyingPriceIfNull) && ecommercengGetGlobalString('ForceBuyingPriceIfNull') > 0) {
 							$buy_price = $item['price'];
 						}
 					}
@@ -6895,12 +7297,12 @@ class eCommerceSynchro
 		$socid = $contact_data['fk_soc'] ?? 0;
 		$lastname = trim($contact_data['lastname'] ?? '');
 		$firstname = trim($contact_data['firstname'] ?? '');
-		if (!empty($conf->global->ECOMMERCENG_UPPERCASE_LASTNAME)) {
+		if (!empty(ecommercengGetGlobalString('ECOMMERCENG_UPPERCASE_LASTNAME'))) {
 			$firstname = dol_ucwords(dol_strtolower($firstname));
 			$lastname = dol_strtoupper($lastname);
 		}
-		if (!empty($conf->global->MAIN_FIRST_TO_UPPER)) $lastname = ucwords($lastname);
-		if (!empty($conf->global->MAIN_FIRST_TO_UPPER)) $firstname = ucwords($firstname);
+		if (!empty(ecommercengGetGlobalString('MAIN_FIRST_TO_UPPER'))) $lastname = ucwords($lastname);
+		if (!empty(ecommercengGetGlobalString('MAIN_FIRST_TO_UPPER'))) $firstname = ucwords($firstname);
 		$address = $contact_data['address'];
 		if (version_compare(DOL_VERSION, '6.0') >= 0) {
 			$zip = dol_trunc($contact_data['zip'], 25, 'right', 'UTF-8', 1);
@@ -6994,7 +7396,7 @@ class eCommerceSynchro
 		$third_party->zip = $zip;
 		$third_party->town = $town;
 		$third_party->country_id = $country_id;
-		$third_party->default_lang = $country_id == $mysoc->country_id ? $mysoc->default_lang : (!empty($conf->global->ECOMMERCENG_DEFAULT_LANG_OTHER_COUNTRY) ? $conf->global->ECOMMERCENG_DEFAULT_LANG_OTHER_COUNTRY : null);
+		$third_party->default_lang = $country_id == $mysoc->country_id ? $mysoc->default_lang : (ecommercengGetGlobalString('ECOMMERCENG_DEFAULT_LANG_OTHER_COUNTRY') ?: null);
 		$third_party->email = $email;
 		$third_party->phone = $phone;
 		$third_party->fax = $fax;
@@ -7192,13 +7594,13 @@ class eCommerceSynchro
 				$product_type = $product->type;
 
 				if ($object->element == 'commande') {
-					if (!empty($conf->global->STOCK_MUST_BE_ENOUGH_FOR_ORDER) && $product_type == 0 && $product->stock_reel < $qty) {
+					if (!empty(ecommercengGetGlobalString('STOCK_MUST_BE_ENOUGH_FOR_ORDER')) && $product_type == 0 && $product->stock_reel < $qty) {
 						$langs->load("errors");
 						$this->errors[] = $langs->trans('ErrorStockIsNotEnoughToAddProductOnOrder', $product->ref);
 						return -4;
 					}
 				} else {
-					if (!empty($conf->global->STOCK_MUST_BE_ENOUGH_FOR_INVOICE) && $product_type == 0 && $product->stock_reel < $qty) {
+					if (!empty(ecommercengGetGlobalString('STOCK_MUST_BE_ENOUGH_FOR_INVOICE')) && $product_type == 0 && $product->stock_reel < $qty) {
 						$langs->load("errors");
 						$this->errors[] = $langs->trans('ErrorStockIsNotEnoughToAddProductOnInvoice', $product->ref);
 						return -4;

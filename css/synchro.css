@@ -1,0 +1,35 @@
+/* ==========================================================================
+   eCommerceng - Synchronization page styles
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Disabled state for purge/debug links during AJAX sync
+   -------------------------------------------------------------------------- */
+.ecommerceng-link-disabled {
+	opacity: 0.4;
+	pointer-events: none;
+	cursor: default;
+}
+
+/* --------------------------------------------------------------------------
+   Debug / purge links
+   -------------------------------------------------------------------------- */
+.submit_reset_data_links,
+.submit_reset_data_all,
+.submit_reset_last_update_date,
+#showtools {
+	color: #600;
+}
+
+/* --------------------------------------------------------------------------
+   AJAX sync progress zone
+   -------------------------------------------------------------------------- */
+#synchro_progress {
+	margin: 10px 0;
+}
+
+#synchro_log {
+	max-height: 400px;
+	overflow-y: auto;
+	margin-top: 5px;
+}
